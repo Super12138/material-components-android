@@ -30,6 +30,7 @@ import android.os.Build.VERSION_CODES;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.Px;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
 import androidx.annotation.VisibleForTesting;
@@ -47,6 +48,7 @@ public final class IndeterminateDrawable<S extends BaseProgressIndicatorSpec>
   private IndeterminateAnimatorDelegate<ObjectAnimator> animatorDelegate;
 
   private Drawable staticDummyDrawable;
+  @Px private int initialIndicatorTrackGapSize;
 
   IndeterminateDrawable(
       @NonNull Context context,
@@ -55,6 +57,7 @@ public final class IndeterminateDrawable<S extends BaseProgressIndicatorSpec>
       @NonNull IndeterminateAnimatorDelegate<ObjectAnimator> animatorDelegate) {
     super(context, baseSpec);
 
+    initialIndicatorTrackGapSize = baseSpec.indicatorTrackGapSize;
     setDrawingDelegate(drawingDelegate);
     setAnimatorDelegate(animatorDelegate);
   }
@@ -168,13 +171,11 @@ public final class IndeterminateDrawable<S extends BaseProgressIndicatorSpec>
     canvas.save();
     drawingDelegate.validateSpecAndAdjustCanvas(canvas, getBounds(), getGrowFraction());
 
-    if (baseSpec.indicatorTrackGapSize > 0) {
+    if (initialIndicatorTrackGapSize > 0) {
       if (drawingDelegate instanceof LinearDrawingDelegate) {
         ((LinearProgressIndicatorSpec) drawingDelegate.spec).trackStopIndicatorSize = 0;
       } else if (drawingDelegate instanceof CircularDrawingDelegate) {
-        // TODO: workaround preventing exiting the indicatorTrackGapSize > 0 logic while keeping
-        //  the animation smooth.
-        baseSpec.indicatorTrackGapSize = 1;
+        baseSpec.indicatorTrackGapSize = 0;
       }
 
       // Draws the transparent track.
@@ -277,5 +278,9 @@ public final class IndeterminateDrawable<S extends BaseProgressIndicatorSpec>
   void setDrawingDelegate(@NonNull DrawingDelegate<S> drawingDelegate) {
     this.drawingDelegate = drawingDelegate;
     drawingDelegate.registerDrawable(this);
+  }
+
+  void setInitialIndicatorTrackGapSize(@Px int initialIndicatorTrackGapSize) {
+    this.initialIndicatorTrackGapSize = initialIndicatorTrackGapSize;
   }
 }
