@@ -15,6 +15,8 @@
  */
 package com.google.android.material.progressindicator;
 
+import static com.google.android.material.math.MathUtils.lerp;
+import static com.google.android.material.progressindicator.BaseProgressIndicator.HIDE_ESCAPE;
 import static java.lang.Math.min;
 
 import android.graphics.Canvas;
@@ -23,8 +25,8 @@ import android.graphics.Paint.Cap;
 import android.graphics.Paint.Style;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import androidx.annotation.ColorInt;
 import androidx.annotation.FloatRange;
+import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
 import com.google.android.material.color.MaterialColors;
 
@@ -38,18 +40,23 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
   private float displayedCornerRadius;
   private float adjustedRadius;
 
+  // This will be used in the ESCAPE hide animation. The start and end fraction in track will be
+  // scaled by this fraction with a pivot of 1.0f.
+  @FloatRange(from = 0.0f, to = 1.0f)
+  private float totalTrackLengthFraction;
+
   /** Instantiates CircularDrawingDelegate with the current spec. */
-  public CircularDrawingDelegate(@NonNull CircularProgressIndicatorSpec spec) {
+  CircularDrawingDelegate(@NonNull CircularProgressIndicatorSpec spec) {
     super(spec);
   }
 
   @Override
-  public int getPreferredWidth() {
+  int getPreferredWidth() {
     return getSize();
   }
 
   @Override
-  public int getPreferredHeight() {
+  int getPreferredHeight() {
     return getSize();
   }
 
@@ -60,14 +67,19 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
    * current track thickness.
    *
    * @param canvas Canvas to draw.
+   * @param bounds Bounds that the drawable is supposed to be drawn within
    * @param trackThicknessFraction A fraction representing how much portion of the track thickness
-   *     should be used in the drawing.
+   *     should be used in the drawing
+   * @param isShowing Whether the drawable is currently animating to show
+   * @param isHiding Whether the drawable is currently animating to hide
    */
   @Override
-  public void adjustCanvas(
+  void adjustCanvas(
       @NonNull Canvas canvas,
       @NonNull Rect bounds,
-      @FloatRange(from = 0.0, to = 1.0) float trackThicknessFraction) {
+      @FloatRange(from = 0.0, to = 1.0) float trackThicknessFraction,
+      boolean isShowing,
+      boolean isHiding) {
     // Scales the actual drawing by the ratio of the given bounds to the preferred size.
     float scaleX = (float) bounds.width() / getPreferredWidth();
     float scaleY = (float) bounds.height() / getPreferredHeight();
@@ -96,47 +108,40 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
     displayedTrackThickness = spec.trackThickness * trackThicknessFraction;
     displayedCornerRadius = spec.trackCornerRadius * trackThicknessFraction;
     adjustedRadius = (spec.indicatorSize - spec.trackThickness) / 2f;
-    if ((drawable.isShowing()
-            && spec.showAnimationBehavior == CircularProgressIndicator.SHOW_INWARD)
-        || (drawable.isHiding()
-            && spec.hideAnimationBehavior == CircularProgressIndicator.HIDE_OUTWARD)) {
+    if ((isShowing && spec.showAnimationBehavior == CircularProgressIndicator.SHOW_INWARD)
+        || (isHiding && spec.hideAnimationBehavior == CircularProgressIndicator.HIDE_OUTWARD)) {
       // Increases the radius by half of the full thickness, then reduces it half way of the
       // displayed thickness to match the outer edges of the displayed indicator and the full
       // indicator.
       adjustedRadius += (1 - trackThicknessFraction) * spec.trackThickness / 2;
-    } else if ((drawable.isShowing()
-            && spec.showAnimationBehavior == CircularProgressIndicator.SHOW_OUTWARD)
-        || (drawable.isHiding()
-            && spec.hideAnimationBehavior == CircularProgressIndicator.HIDE_INWARD)) {
+    } else if ((isShowing && spec.showAnimationBehavior == CircularProgressIndicator.SHOW_OUTWARD)
+        || (isHiding && spec.hideAnimationBehavior == CircularProgressIndicator.HIDE_INWARD)) {
       // Decreases the radius by half of the full thickness, then raises it half way of the
       // displayed thickness to match the inner edges of the displayed indicator and the full
       // indicator.
       adjustedRadius -= (1 - trackThicknessFraction) * spec.trackThickness / 2;
     }
+    // Sets the total track length fraction if ESCAPE hide animation is used.
+    if (isHiding && spec.hideAnimationBehavior == HIDE_ESCAPE) {
+      totalTrackLengthFraction = trackThicknessFraction;
+    } else {
+      totalTrackLengthFraction = 1f;
+    }
   }
 
-  /**
-   * Fills a part of the track with the designated indicator color. The filling part is defined with
-   * two fractions normalized to [0, 1] representing the start degree and the end degree from 0 deg
-   * (top). If start fraction is larger than the end fraction, it will draw the arc across 0 deg.
-   *
-   * @param canvas Canvas to draw.
-   * @param paint Paint used to draw.
-   * @param startFraction A fraction representing where to start the drawing along the track.
-   * @param endFraction A fraction representing where to end the drawing along the track.
-   * @param color The color used to draw the indicator.
-   */
   @Override
   void fillIndicator(
       @NonNull Canvas canvas,
       @NonNull Paint paint,
-      @FloatRange(from = 0.0, to = 1.0) float startFraction,
-      @FloatRange(from = 0.0, to = 1.0) float endFraction,
-      @ColorInt int color) {
+      @NonNull ActiveIndicator activeIndicator,
+      @IntRange(from = 0, to = 255) int drawableAlpha) {
+    float startFraction = activeIndicator.startFraction;
+    float endFraction = activeIndicator.endFraction;
     // No need to draw if startFraction and endFraction are same.
     if (startFraction == endFraction) {
       return;
     }
+    int color = MaterialColors.compositeARGBWithAlpha(activeIndicator.color, drawableAlpha);
 
     // Sets up the paint.
     paint.setStyle(Style.STROKE);
@@ -145,12 +150,31 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
     paint.setColor(color);
     paint.setStrokeWidth(displayedTrackThickness);
 
+    float arcFraction =
+        endFraction >= startFraction
+            ? (endFraction - startFraction)
+            : (1 + endFraction - startFraction);
+    startFraction %= 1;
+    if (totalTrackLengthFraction < 1 && startFraction + arcFraction > 1) {
+      // Breaks the arc at 0 degree for ESCAPE animation.
+      ActiveIndicator firstPart = new ActiveIndicator();
+      firstPart.startFraction = startFraction;
+      firstPart.endFraction = 1f;
+      firstPart.color = color;
+      fillIndicator(canvas, paint, firstPart, drawableAlpha);
+      ActiveIndicator secondPart = new ActiveIndicator();
+      secondPart.startFraction = 1f;
+      secondPart.endFraction = startFraction + arcFraction;
+      secondPart.color = color;
+      fillIndicator(canvas, paint, secondPart, drawableAlpha);
+      return;
+    }
+    // Scale start and arc fraction for ESCAPE animation.
+    startFraction = lerp(1 - totalTrackLengthFraction, 1f, startFraction);
+    arcFraction = lerp(0f, totalTrackLengthFraction, arcFraction);
     // Calculates the start and end in degrees.
     float startDegree = startFraction * 360 * arcDirectionFactor;
-    float arcDegree =
-        endFraction >= startFraction
-            ? (endFraction - startFraction) * 360 * arcDirectionFactor
-            : (1 + endFraction - startFraction) * 360 * arcDirectionFactor;
+    float arcDegree = arcFraction * 360 * arcDirectionFactor;
 
     // Draws the gaps if needed.
     if (spec.indicatorTrackGapSize > 0) {
@@ -177,15 +201,12 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
     }
   }
 
-  /**
-   * Fills the whole track with track color.
-   *
-   * @param canvas Canvas to draw.
-   * @param paint Paint used to draw.
-   */
   @Override
-  void fillTrack(@NonNull Canvas canvas, @NonNull Paint paint) {
-    int trackColor = MaterialColors.compositeARGBWithAlpha(spec.trackColor, drawable.getAlpha());
+  void fillTrack(
+      @NonNull Canvas canvas,
+      @NonNull Paint paint,
+      @IntRange(from = 0, to = 255) int drawableAlpha) {
+    int trackColor = MaterialColors.compositeARGBWithAlpha(spec.trackColor, drawableAlpha);
 
     // Sets up the paint.
     paint.setStyle(Style.STROKE);

@@ -90,8 +90,11 @@ public class CircularProgressIndicator
   // ******************** Initialization **********************
 
   private void initializeDrawables() {
-    setIndeterminateDrawable(IndeterminateDrawable.createCircularDrawable(getContext(), spec));
-    setProgressDrawable(DeterminateDrawable.createCircularDrawable(getContext(), spec));
+    CircularDrawingDelegate drawingDelegate = new CircularDrawingDelegate(spec);
+    setIndeterminateDrawable(
+        IndeterminateDrawable.createCircularDrawable(getContext(), spec, drawingDelegate));
+    setProgressDrawable(
+        DeterminateDrawable.createCircularDrawable(getContext(), spec, drawingDelegate));
   }
 
   // **************** Getters and setters ****************
@@ -163,6 +166,7 @@ public class CircularProgressIndicator
     if (spec.indicatorSize != indicatorSize) {
       spec.indicatorSize = indicatorSize;
       spec.validateSpec();
+      requestLayout();
       invalidate();
     }
   }
@@ -190,6 +194,15 @@ public class CircularProgressIndicator
   public void setIndicatorDirection(@IndicatorDirection int indicatorDirection) {
     spec.indicatorDirection = indicatorDirection;
     invalidate();
+  }
+
+  @Override
+  public synchronized void setIndeterminate(boolean indeterminate) {
+    super.setIndeterminate(indeterminate);
+
+    if (!indeterminate && getIndeterminateDrawable() != null) {
+      setIndicatorTrackGapSize(getIndeterminateDrawable().initialIndicatorTrackGapSize);
+    }
   }
 
   // **************** Interface ****************

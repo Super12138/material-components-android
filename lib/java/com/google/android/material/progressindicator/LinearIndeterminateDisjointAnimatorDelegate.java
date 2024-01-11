@@ -18,8 +18,7 @@ package com.google.android.material.progressindicator;
 
 import com.google.android.material.R;
 
-import static java.lang.Math.max;
-import static java.lang.Math.min;
+import static androidx.core.math.MathUtils.clamp;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -32,8 +31,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
 import androidx.vectordrawable.graphics.drawable.Animatable2Compat.AnimationCallback;
 import androidx.vectordrawable.graphics.drawable.AnimationUtilsCompat;
-import com.google.android.material.color.MaterialColors;
-import java.util.Arrays;
+import com.google.android.material.progressindicator.DrawingDelegate.ActiveIndicator;
 
 /**
  * This is the implementation class for drawing progress indicator in the linear disjoint
@@ -63,7 +61,7 @@ final class LinearIndeterminateDisjointAnimatorDelegate
 
   public LinearIndeterminateDisjointAnimatorDelegate(
       @NonNull Context context, @NonNull LinearProgressIndicatorSpec spec) {
-    super(/*segmentCount=*/ 2);
+    super(/* indicatorCount= */ 2);
 
     baseSpec = spec;
 
@@ -166,22 +164,28 @@ final class LinearIndeterminateDisjointAnimatorDelegate
 
   /** Updates the segment position array based on current playtime. */
   private void updateSegmentPositions(int playtime) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < activeIndicators.size(); i++) {
+      ActiveIndicator indicator = activeIndicators.get(i);
       float fraction =
           getFractionInRange(
-              playtime, DELAY_TO_MOVE_SEGMENT_ENDS[i], DURATION_TO_MOVE_SEGMENT_ENDS[i]);
-      float segmentPosition = interpolatorArray[i].getInterpolation(fraction);
-      segmentPositions[i] = max(0f, min(1f, segmentPosition));
+              playtime, DELAY_TO_MOVE_SEGMENT_ENDS[2 * i], DURATION_TO_MOVE_SEGMENT_ENDS[2 * i]);
+      indicator.startFraction = clamp(interpolatorArray[2 * i].getInterpolation(fraction), 0f, 1f);
+      fraction =
+          getFractionInRange(
+              playtime,
+              DELAY_TO_MOVE_SEGMENT_ENDS[2 * i + 1],
+              DURATION_TO_MOVE_SEGMENT_ENDS[2 * i + 1]);
+      indicator.endFraction =
+          clamp(interpolatorArray[2 * i + 1].getInterpolation(fraction), 0f, 1f);
     }
   }
 
   /** Updates the segment color array based on the updated color index. */
   private void maybeUpdateSegmentColors() {
     if (dirtyColors) {
-      Arrays.fill(
-          segmentColors,
-          MaterialColors.compositeARGBWithAlpha(
-              baseSpec.indicatorColors[indicatorColorIndex], drawable.getAlpha()));
+      for (ActiveIndicator indicator : activeIndicators) {
+        indicator.color = baseSpec.indicatorColors[indicatorColorIndex];
+      }
       dirtyColors = false;
     }
   }
@@ -189,10 +193,9 @@ final class LinearIndeterminateDisjointAnimatorDelegate
   @VisibleForTesting
   void resetPropertiesForNewStart() {
     indicatorColorIndex = 0;
-    int indicatorColor =
-        MaterialColors.compositeARGBWithAlpha(baseSpec.indicatorColors[0], drawable.getAlpha());
-    segmentColors[0] = indicatorColor;
-    segmentColors[1] = indicatorColor;
+    for (ActiveIndicator indicator : activeIndicators) {
+      indicator.color = baseSpec.indicatorColors[0];
+    }
   }
 
   // ******************* Getters and setters *******************
