@@ -141,11 +141,15 @@ final class LinearIndeterminateContiguousAnimatorDelegate
   }
 
   @VisibleForTesting
+  @Override
   void resetPropertiesForNewStart() {
     dirtyColors = true;
     newIndicatorColorIndex = 1;
     for (ActiveIndicator indicator : activeIndicators) {
       indicator.color = baseSpec.indicatorColors[0];
+      // No track is drawn in this type of animation. Half gap is used to maintain the gap between
+      // active indicators.
+      indicator.gapSize = baseSpec.indicatorTrackGapSize / 2;
     }
   }
 
@@ -156,6 +160,7 @@ final class LinearIndeterminateContiguousAnimatorDelegate
   }
 
   @VisibleForTesting
+  @Override
   void setAnimationFraction(float value) {
     animationFraction = value;
     int playtime = (int) (animationFraction * DURATION_PER_CYCLE_IN_MS);
