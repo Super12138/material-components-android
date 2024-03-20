@@ -30,6 +30,7 @@ import static java.lang.Float.compare;
 import static java.lang.Math.abs;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static java.math.MathContext.DECIMAL64;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -101,7 +102,6 @@ import com.google.android.material.tooltip.TooltipDrawable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -348,25 +348,7 @@ abstract class BaseSlider<
 
   @NonNull
   private final ViewTreeObserver.OnScrollChangedListener onScrollChangedListener =
-      () -> {
-        if (shouldAlwaysShowLabel() && isEnabled()) {
-          Rect contentViewBounds = new Rect();
-          ViewUtils.getContentView(this).getHitRect(contentViewBounds);
-          boolean isSliderVisibleOnScreen = getLocalVisibleRect(contentViewBounds);
-          for (int i = 0; i < labels.size(); i++) {
-            TooltipDrawable label = labels.get(i);
-            // Get associated value for label
-            if (i < values.size()) {
-              positionLabel(label, values.get(i));
-            }
-            if (isSliderVisibleOnScreen) {
-              ViewUtils.getContentViewOverlay(this).add(label);
-            } else {
-              ViewUtils.getContentViewOverlay(this).remove(label);
-            }
-          }
-        }
-      };
+      this::updateLabels;
 
   /**
    * Determines the behavior of the label which can be any of the following.
@@ -606,14 +588,18 @@ abstract class BaseSlider<
 
   private boolean valueLandsOnTick(float value) {
     // Check that the value is a multiple of stepSize given the offset of valueFrom.
-    return isMultipleOfStepSize(value - valueFrom);
-  }
-
-  private boolean isMultipleOfStepSize(float value) {
-    // We're using BigDecimal here to avoid floating point rounding errors.
     double result =
         new BigDecimal(Float.toString(value))
-            .divide(new BigDecimal(Float.toString(stepSize)), MathContext.DECIMAL64)
+            .subtract(new BigDecimal(Float.toString(valueFrom)), DECIMAL64)
+            .doubleValue();
+    return isMultipleOfStepSize(result);
+  }
+
+  private boolean isMultipleOfStepSize(double value) {
+    // We're using BigDecimal here to avoid floating point rounding errors.
+    double result =
+        new BigDecimal(Double.toString(value))
+            .divide(new BigDecimal(Float.toString(stepSize)), DECIMAL64)
             .doubleValue();
 
     // If the result is a whole number, it means the value is a multiple of stepSize.
@@ -2025,12 +2011,7 @@ abstract class BaseSlider<
       maybeDrawCompatHalo(canvas, trackWidth, yCenter);
     }
 
-    // Draw labels if there is an active thumb or the labels are always visible.
-    if ((activeThumbIdx != -1 || shouldAlwaysShowLabel()) && isEnabled()) {
-      ensureLabelsAdded();
-    } else {
-      ensureLabelsRemoved();
-    }
+    updateLabels();
 
     drawThumbs(canvas, trackWidth, yCenter);
   }
@@ -2052,7 +2033,7 @@ abstract class BaseSlider<
   private void drawInactiveTrack(@NonNull Canvas canvas, int width, int yCenter) {
     float[] activeRange = getActiveRange();
     float right = trackSidePadding + activeRange[1] * width;
-    if (right < trackSidePadding + width - thumbTrackGapSize) {
+    if (right < trackSidePadding + width) {
       if (hasGapBetweenThumbAndTrack()) {
         trackRect.set(
             right + thumbTrackGapSize,
@@ -2069,7 +2050,7 @@ abstract class BaseSlider<
 
     // Also draw inactive track to the left if there is any
     float left = trackSidePadding + activeRange[0] * width;
-    if (left > trackSidePadding + thumbTrackGapSize) {
+    if (left > trackSidePadding) {
       if (hasGapBetweenThumbAndTrack()) {
         trackRect.set(
             trackSidePadding - trackHeight / 2f,
@@ -2121,29 +2102,25 @@ abstract class BaseSlider<
           }
         }
 
-        float threshold = 0;
         switch (direction) {
           case NONE:
             left += thumbTrackGapSize;
             right -= thumbTrackGapSize;
-            threshold = trackInsideCornerSize * 2;
             break;
           case LEFT:
             left -= trackHeight / 2f;
             right -= thumbTrackGapSize;
-            threshold = trackInsideCornerSize + trackHeight / 2f + thumbTrackGapSize;
             break;
           case RIGHT:
             left += thumbTrackGapSize;
             right += trackHeight / 2f;
-            threshold = trackInsideCornerSize + trackHeight / 2f + thumbTrackGapSize;
             break;
           default:
             // fall through
         }
 
-        // Active track is too small to be drawn
-        if (right - left <= threshold) {
+        // Nothing to draw if left is bigger than right.
+        if (left >= right) {
           continue;
         }
 
@@ -2187,29 +2164,52 @@ abstract class BaseSlider<
         rightCornerSize = trackInsideCornerSize;
         break;
     }
-    bounds.left += leftCornerSize;
-    bounds.right -= rightCornerSize;
 
-    // Build track path with rounded corners.
-    trackPath.reset();
-    trackPath.addRect(bounds, Direction.CW);
-    addRoundedCorners(trackPath, bounds, leftCornerSize, rightCornerSize);
-
-    // Draw the track.
     paint.setStyle(Style.FILL);
     paint.setStrokeCap(Cap.BUTT);
     paint.setAntiAlias(true);
-    canvas.drawPath(trackPath, paint);
+
+    // Draws track path with rounded corners.
+    trackPath.reset();
+    if (bounds.width() >= leftCornerSize + rightCornerSize) {
+      // Fills one rounded rectangle.
+      trackPath.addRoundRect(bounds, getCornerRadii(leftCornerSize, rightCornerSize), Direction.CW);
+      canvas.drawPath(trackPath, paint);
+    } else {
+      // Clips the canvas and draws the fully rounded track.
+      float minCornerSize = min(leftCornerSize, rightCornerSize);
+      float maxCornerSize = max(leftCornerSize, rightCornerSize);
+      canvas.save();
+      // Clips the canvas using the current bounds with the smaller corner size.
+      trackPath.addRoundRect(bounds, minCornerSize, minCornerSize, Direction.CW);
+      canvas.clipPath(trackPath);
+      // Then draws a rectangle with the minimum width for full corners.
+      switch (direction) {
+        case LEFT:
+          cornerRect.set(bounds.left, bounds.top, bounds.left + 2 * maxCornerSize, bounds.bottom);
+          break;
+        case RIGHT:
+          cornerRect.set(bounds.right - 2 * maxCornerSize, bounds.top, bounds.right, bounds.bottom);
+          break;
+        default:
+          cornerRect.set(
+              bounds.centerX() - maxCornerSize,
+              bounds.top,
+              bounds.centerX() + maxCornerSize,
+              bounds.bottom);
+      }
+      canvas.drawRoundRect(cornerRect, maxCornerSize, maxCornerSize, paint);
+      canvas.restore();
+    }
   }
 
-  private void addRoundedCorners(
-      Path path, RectF bounds, float leftCornerSize, float rightCornerSize) {
-    cornerRect.set(
-        bounds.left - leftCornerSize, bounds.top, bounds.left + leftCornerSize, bounds.bottom);
-    path.addRoundRect(cornerRect, leftCornerSize, leftCornerSize, Direction.CW);
-    cornerRect.set(
-        bounds.right - rightCornerSize, bounds.top, bounds.right + rightCornerSize, bounds.bottom);
-    path.addRoundRect(cornerRect, rightCornerSize, rightCornerSize, Direction.CW);
+  private float[] getCornerRadii(float leftSide, float rightSide) {
+    return new float[] {
+      leftSide, leftSide,
+      rightSide, rightSide,
+      rightSide, rightSide,
+      leftSide, leftSide
+    };
   }
 
   private void maybeDrawTicks(@NonNull Canvas canvas) {
@@ -2218,25 +2218,41 @@ abstract class BaseSlider<
     }
 
     float[] activeRange = getActiveRange();
-    int leftPivotIndex = pivotIndex(ticksCoordinates, activeRange[0]);
-    int rightPivotIndex = pivotIndex(ticksCoordinates, activeRange[1]);
 
-    // Draw inactive ticks to the left of the smallest thumb.
-    canvas.drawPoints(ticksCoordinates, 0, leftPivotIndex * 2, inactiveTicksPaint);
+    // Calculate the index of the left tick of the active track.
+    final int leftActiveTickIndex =
+        (int) Math.ceil(activeRange[0] * (ticksCoordinates.length / 2f - 1));
 
-    // Draw active ticks between the thumbs.
-    canvas.drawPoints(
-        ticksCoordinates,
-        leftPivotIndex * 2,
-        rightPivotIndex * 2 - leftPivotIndex * 2,
-        activeTicksPaint);
+    // Calculate the index of the right tick of the active track.
+    final int rightActiveTickIndex =
+        (int) Math.floor(activeRange[1] * (ticksCoordinates.length / 2f - 1));
 
-    // Draw inactive ticks to the right of the largest thumb.
-    canvas.drawPoints(
-        ticksCoordinates,
-        rightPivotIndex * 2,
-        ticksCoordinates.length - rightPivotIndex * 2,
-        inactiveTicksPaint);
+    // Draw ticks on the left inactive track (if any).
+    if (leftActiveTickIndex > 0) {
+      canvas.drawPoints(
+          ticksCoordinates,
+          0,
+          leftActiveTickIndex * 2,
+          inactiveTicksPaint);
+    }
+
+    // Draw ticks on the active track (if any).
+    if (leftActiveTickIndex <= rightActiveTickIndex) {
+      canvas.drawPoints(
+          ticksCoordinates,
+          leftActiveTickIndex * 2,
+          (rightActiveTickIndex - leftActiveTickIndex + 1) * 2,
+          activeTicksPaint);
+    }
+
+    // Draw ticks on the right inactive track (if any).
+    if ((rightActiveTickIndex + 1) * 2 < ticksCoordinates.length) {
+      canvas.drawPoints(
+          ticksCoordinates,
+          (rightActiveTickIndex + 1) * 2,
+          ticksCoordinates.length - (rightActiveTickIndex + 1) * 2,
+          inactiveTicksPaint);
+    }
   }
 
   private void maybeDrawStopIndicator(@NonNull Canvas canvas, int yCenter) {
@@ -2411,17 +2427,6 @@ abstract class BaseSlider<
 
     lastEvent = MotionEvent.obtain(event);
     return true;
-  }
-
-  /**
-   * Calculates the index the closest tick coordinates that the thumb should snap to.
-   *
-   * @param coordinates Tick coordinates defined in {@code #setTicksCoordinates()}.
-   * @param position Actual thumb position.
-   * @return Index of the closest tick coordinate.
-   */
-  private static int pivotIndex(float[] coordinates, float position) {
-    return Math.round(position * (coordinates.length / 2f - 1));
   }
 
   private double snapPosition(float position) {
@@ -2637,6 +2642,37 @@ abstract class BaseSlider<
     return animator;
   }
 
+  private void updateLabels() {
+    switch (labelBehavior) {
+      case LABEL_GONE:
+        ensureLabelsRemoved();
+        break;
+      case LABEL_VISIBLE:
+        if (isEnabled() && isSliderVisibleOnScreen()) {
+          ensureLabelsAdded();
+        } else {
+          ensureLabelsRemoved();
+        }
+        break;
+      case LABEL_FLOATING:
+      case LABEL_WITHIN_BOUNDS:
+        if (activeThumbIdx != -1 && isEnabled()) {
+          ensureLabelsAdded();
+        } else {
+          ensureLabelsRemoved();
+        }
+        break;
+      default:
+        throw new IllegalArgumentException("Unexpected labelBehavior: " + labelBehavior);
+    }
+  }
+
+  private boolean isSliderVisibleOnScreen() {
+    final Rect contentViewBounds = new Rect();
+    ViewUtils.getContentView(this).getHitRect(contentViewBounds);
+    return getLocalVisibleRect(contentViewBounds);
+  }
+
   private void ensureLabelsRemoved() {
     // If the labels are animated in or in the process of animating in, create and start a new
     // animator to animate out the labels and remove them once the animation ends.
@@ -2660,11 +2696,6 @@ abstract class BaseSlider<
   }
 
   private void ensureLabelsAdded() {
-    if (labelBehavior == LABEL_GONE) {
-      // If the label shouldn't be drawn we can skip this.
-      return;
-    }
-
     // If the labels are not animating in, start an animator to show them. ensureLabelsAdded will
     // be called multiple times by BaseSlider's draw method, making this check necessary to avoid
     // creating and starting an animator for each draw call.
