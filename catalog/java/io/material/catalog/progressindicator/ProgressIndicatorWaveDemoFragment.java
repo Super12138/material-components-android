@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,6 @@ package io.material.catalog.progressindicator;
 
 import io.material.catalog.R;
 
-import static com.google.android.material.progressindicator.CircularProgressIndicator.INDICATOR_DIRECTION_CLOCKWISE;
-import static com.google.android.material.progressindicator.CircularProgressIndicator.INDICATOR_DIRECTION_COUNTERCLOCKWISE;
-import static com.google.android.material.progressindicator.LinearProgressIndicator.INDICATOR_DIRECTION_LEFT_TO_RIGHT;
-import static com.google.android.material.progressindicator.LinearProgressIndicator.INDICATOR_DIRECTION_RIGHT_TO_LEFT;
-
 import android.view.View;
 import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
@@ -31,10 +26,10 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.slider.Slider;
 
 /**
- * This is the fragment to demo simple use cases of {@link LinearProgressIndicator} and {@link
+ * This is the fragment to demo wave effects in {@link LinearProgressIndicator} and {@link
  * CircularProgressIndicator}.
  */
-public class ProgressIndicatorMainDemoFragment extends ProgressIndicatorDemoFragment {
+public class ProgressIndicatorWaveDemoFragment extends ProgressIndicatorDemoFragment {
 
   @NonNull private LinearProgressIndicator linearIndicator;
   @NonNull private CircularProgressIndicator circularIndicator;
@@ -75,57 +70,37 @@ public class ProgressIndicatorMainDemoFragment extends ProgressIndicatorDemoFrag
 
     float pixelsInDp = view.getResources().getDisplayMetrics().density;
 
-    Slider thicknessSlider = view.findViewById(R.id.thicknessSlider);
-    thicknessSlider.addOnChangeListener(
+    Slider amplitudeSlider = view.findViewById(R.id.amplitude_slider);
+    amplitudeSlider.addOnChangeListener(
         (slider, value, fromUser) -> {
-          int newThickness = (int) (value * pixelsInDp);
-          if (linearIndicator.getTrackThickness() != newThickness) {
-            linearIndicator.setTrackThickness(newThickness);
+          int newAmplitude = (int) (value * pixelsInDp);
+          if (linearIndicator.getAmplitude() != newAmplitude) {
+            linearIndicator.setAmplitude(newAmplitude);
           }
-          if (circularIndicator.getTrackThickness() != newThickness) {
-            circularIndicator.setTrackThickness(newThickness);
+          if (circularIndicator.getAmplitude() != newAmplitude) {
+            circularIndicator.setAmplitude((int) (value * pixelsInDp));
           }
         });
-
-    Slider cornerSlider = view.findViewById(R.id.cornerSlider);
-    cornerSlider.addOnChangeListener(
+    Slider waveLengthSlider = view.findViewById(R.id.wavelength_slider);
+    waveLengthSlider.addOnChangeListener(
         (slider, value, fromUser) -> {
-          int newCornerRadius = (int) (value * pixelsInDp);
-          if (linearIndicator.getTrackCornerRadius() != newCornerRadius) {
-            linearIndicator.setTrackCornerRadius(newCornerRadius);
+          int newWaveLength = (int) (value * pixelsInDp);
+          if (linearIndicator.getWavelength() != newWaveLength) {
+            linearIndicator.setWavelength(newWaveLength);
           }
-          if (circularIndicator.getTrackCornerRadius() != newCornerRadius) {
-            circularIndicator.setTrackCornerRadius(newCornerRadius);
+          if (circularIndicator.getWavelength() != newWaveLength) {
+            circularIndicator.setWavelength(newWaveLength);
           }
         });
-
-    Slider gapSlider = view.findViewById(R.id.gapSlider);
-    gapSlider.addOnChangeListener(
+    Slider speedSlider = view.findViewById(R.id.speed_slider);
+    speedSlider.addOnChangeListener(
         (slider, value, fromUser) -> {
-          int newGapSize = (int) (value * pixelsInDp);
-          if (linearIndicator.getIndicatorTrackGapSize() != newGapSize) {
-            linearIndicator.setIndicatorTrackGapSize(newGapSize);
+          int newSpeed = (int) (value * pixelsInDp);
+          if (linearIndicator.getSpeed() != newSpeed) {
+            linearIndicator.setSpeed(newSpeed);
           }
-          if (circularIndicator.getIndicatorTrackGapSize() != newGapSize) {
-            circularIndicator.setIndicatorTrackGapSize(newGapSize);
-          }
-        });
-
-    MaterialSwitch reverseSwitch = view.findViewById(R.id.reverseSwitch);
-    reverseSwitch.setOnCheckedChangeListener(
-        (buttonView, isChecked) -> {
-          linearIndicator.setIndicatorDirection(
-              isChecked ? INDICATOR_DIRECTION_RIGHT_TO_LEFT : INDICATOR_DIRECTION_LEFT_TO_RIGHT);
-          circularIndicator.setIndicatorDirection(
-              isChecked ? INDICATOR_DIRECTION_COUNTERCLOCKWISE : INDICATOR_DIRECTION_CLOCKWISE);
-        });
-
-    Slider linearStopIndicatorSlider = view.findViewById(R.id.linearStopIndicatorSizeSlider);
-    linearStopIndicatorSlider.addOnChangeListener(
-        (slider, value, fromUser) -> {
-          int newStopIndicatorSize = (int) (value * pixelsInDp);
-          if (linearIndicator.getTrackStopIndicatorSize() != newStopIndicatorSize) {
-            linearIndicator.setTrackStopIndicatorSize(newStopIndicatorSize);
+          if (circularIndicator.getSpeed() != newSpeed) {
+            circularIndicator.setSpeed(newSpeed);
           }
         });
 
@@ -148,6 +123,6 @@ public class ProgressIndicatorMainDemoFragment extends ProgressIndicatorDemoFrag
   @Override
   @LayoutRes
   public int getProgressIndicatorDemoControlLayout() {
-    return R.layout.cat_progress_indicator_basic_controls;
+    return R.layout.cat_progress_indicator_wave_controls;
   }
 }

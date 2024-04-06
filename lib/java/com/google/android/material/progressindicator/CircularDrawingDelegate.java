@@ -18,6 +18,7 @@ package com.google.android.material.progressindicator;
 import static androidx.core.math.MathUtils.clamp;
 import static com.google.android.material.math.MathUtils.lerp;
 import static com.google.android.material.progressindicator.BaseProgressIndicator.HIDE_ESCAPE;
+import static java.lang.Math.PI;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.lang.Math.toDegrees;
@@ -31,6 +32,8 @@ import android.graphics.Path;
 import android.graphics.PathMeasure;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.util.Pair;
 import androidx.annotation.ColorInt;
 import androidx.annotation.FloatRange;
@@ -117,6 +120,11 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
     canvas.scale(scaleX, scaleY);
     if (spec.indicatorDirection != CircularProgressIndicator.INDICATOR_DIRECTION_CLOCKWISE) {
       canvas.scale(1, -1);
+      if (VERSION.SDK_INT == VERSION_CODES.Q) {
+        // There's some issue to rotate and flip the canvas on API 29. The workaround is to rotate
+        // the canvas an extra 0.1 degree.
+        canvas.rotate(0.1f);
+      }
     }
 
     // Clip all drawing to the designated area, so it doesn't draw outside of its bounds (which can
@@ -172,6 +180,8 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
         color,
         activeIndicator.gapSize,
         activeIndicator.gapSize,
+        activeIndicator.amplitudeFraction,
+        activeIndicator.phaseFraction,
         /* shouldDrawActiveIndicator= */ true);
   }
 
@@ -193,6 +203,8 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
         color,
         gapSize,
         gapSize,
+        /* amplitudeFraction= */ 0f,
+        /* phaseFraction= */ 0f,
         /* shouldDrawActiveIndicator= */ false);
   }
 
@@ -207,6 +219,8 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
    * @param paintColor The color used to draw the indicator.
    * @param startGapSize The gap size applied to the start (rotating behind) of the drawing part.
    * @param endGapSize The gap size applied to the end (rotating ahead) of the drawing part.
+   * @param amplitudeFraction The fraction [0, 1] of amplitude applied to the part.
+   * @param phaseFraction The fraction [0, 1] of initial phase in one cycle.
    * @param shouldDrawActiveIndicator Whether this part should be drawn as an active indicator.
    */
   private void drawArc(
@@ -217,6 +231,8 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
       @ColorInt int paintColor,
       @Px int startGapSize,
       @Px int endGapSize,
+      float amplitudeFraction,
+      float phaseFraction,
       boolean shouldDrawActiveIndicator) {
     float arcFraction =
         endFraction >= startFraction
@@ -237,6 +253,8 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
           paintColor,
           startGapSize,
           /* endGapSize= */ 0,
+          amplitudeFraction,
+          phaseFraction,
           shouldDrawActiveIndicator);
       drawArc(
           canvas,
@@ -246,19 +264,27 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
           paintColor,
           /* startGapSize= */ 0,
           endGapSize,
+          amplitudeFraction,
+          phaseFraction,
           shouldDrawActiveIndicator);
       return;
     }
 
     float displayedCornerRadiusInDegree = (float) toDegrees(displayedCornerRadius / adjustedRadius);
-
-    if (startFraction == 0 && arcFraction >= 1 - ROUND_CAP_RAMP_DOWN_THRESHHOLD) {
+    float arcFractionOverRoundCapThreshold = arcFraction - (1 - ROUND_CAP_RAMP_DOWN_THRESHHOLD);
+    if (arcFractionOverRoundCapThreshold >= 0) {
       // Increases the arc length to hide the round cap at the ends when the active indicator is
       // forming a full circle.
-      arcFraction +=
-          (arcFraction - (1 - ROUND_CAP_RAMP_DOWN_THRESHHOLD))
-              * (2 * displayedCornerRadiusInDegree / 360)
+      float increasedArcFraction =
+          arcFractionOverRoundCapThreshold
+              * displayedCornerRadiusInDegree
+              / 180
               / ROUND_CAP_RAMP_DOWN_THRESHHOLD;
+      arcFraction += increasedArcFraction;
+      // Offsets the start fraction to make the inactive track's ends connect at 0%.
+      if (!shouldDrawActiveIndicator) {
+        startFraction -= increasedArcFraction / 2;
+      }
     }
 
     // Scale start and arc fraction for ESCAPE animation.
@@ -275,7 +301,8 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
       return;
     }
 
-    boolean shouldDrawWavyPath = spec.hasWavyEffect() && shouldDrawActiveIndicator;
+    boolean shouldDrawWavyPath =
+        spec.hasWavyEffect() && shouldDrawActiveIndicator && amplitudeFraction > 0f;
 
     // Sets up the paint.
     paint.setAntiAlias(true);
@@ -322,7 +349,9 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
                 activePathMeasure,
                 displayedActivePath,
                 startDegreeWithoutCorners / 360,
-                arcDegreeWithoutCorners / 360);
+                arcDegreeWithoutCorners / 360,
+                amplitudeFraction,
+                phaseFraction);
         canvas.drawPath(displayedActivePath, paint);
       }
 
@@ -412,7 +441,7 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
     cachedActivePath.transform(transform);
     if (spec.hasWavyEffect()) {
       activePathMeasure.setPath(cachedActivePath, false);
-      createWavyPath(activePathMeasure, cachedActivePath, displayedAmplitude);
+      createWavyPath(activePathMeasure, cachedActivePath, cachedAmplitude);
     }
     activePathMeasure.setPath(cachedActivePath, false);
   }
@@ -471,16 +500,28 @@ final class CircularDrawingDelegate extends DrawingDelegate<CircularProgressIndi
 
   @NonNull
   private Pair<PathPoint, PathPoint> getDisplayedPath(
-      @NonNull PathMeasure pathMeasure, @NonNull Path displayedPath, float start, float span) {
+      @NonNull PathMeasure pathMeasure,
+      @NonNull Path displayedPath,
+      float start,
+      float span,
+      float amplitudeFraction,
+      float phaseFraction) {
     if (adjustedRadius != cachedRadius
-        || (pathMeasure == activePathMeasure && displayedAmplitude != cachedAmplitude)) {
-      cachedAmplitude = displayedAmplitude;
+        || (pathMeasure == activePathMeasure
+            && displayedAmplitude * amplitudeFraction != cachedAmplitude)) {
+      cachedAmplitude = displayedAmplitude * amplitudeFraction;
       cachedRadius = adjustedRadius;
       invalidateCachedPaths();
     }
     displayedPath.rewind();
     span = clamp(span, 0, 1);
     float resultRotation = 0;
+    if (spec.hasWavyEffect()) {
+      float cycleCount = (float) (2 * PI * adjustedRadius / adjustedWavelength);
+      float phaseFractionInOneCycle = phaseFraction / cycleCount;
+      start += phaseFractionInOneCycle;
+      resultRotation -= phaseFractionInOneCycle * 360;
+    }
     start %= 1;
     float startDistance = start * pathMeasure.getLength() / 2;
     float endDistance = (start + span) * pathMeasure.getLength() / 2;
