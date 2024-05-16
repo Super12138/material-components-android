@@ -24,7 +24,6 @@ import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
-import android.os.Build.VERSION;
 import android.util.Property;
 import androidx.annotation.FloatRange;
 import androidx.annotation.IntRange;
@@ -301,7 +300,7 @@ abstract class DrawableWithAnimatedVisibilityChange extends Drawable implements 
       return changed;
     }
 
-    if (restart || VERSION.SDK_INT < 19 || !animatorInAction.isPaused()) {
+    if (restart || !animatorInAction.isPaused()) {
       // Starts/restarts the animator if requested or not eligible to resume.
       animatorInAction.start();
     } else {
@@ -452,15 +451,18 @@ abstract class DrawableWithAnimatedVisibilityChange extends Drawable implements 
     if (mockPhaseFraction > 0) {
       return mockPhaseFraction;
     }
+
     float phaseFraction = 0f;
-    if (baseSpec.speed != 0) {
+    if (baseSpec.hasWavyEffect() && baseSpec.speed != 0) {
       float durationScale =
           animatorDurationScaleProvider.getSystemAnimatorDurationScale(
               context.getContentResolver());
-      int cycleInMs = (int) (1000f * baseSpec.wavelength / baseSpec.speed * durationScale);
-      phaseFraction = (float) (System.currentTimeMillis() % cycleInMs) / cycleInMs;
-      if (phaseFraction < 0f) {
-        phaseFraction = (phaseFraction % 1) + 1f;
+      if (durationScale > 0f) {
+        int cycleInMs = (int) (1000f * baseSpec.wavelength / baseSpec.speed * durationScale);
+        phaseFraction = (float) (System.currentTimeMillis() % cycleInMs) / cycleInMs;
+        if (phaseFraction < 0f) {
+          phaseFraction = (phaseFraction % 1) + 1f;
+        }
       }
     }
     return phaseFraction;

@@ -266,6 +266,13 @@ public class SearchView extends FrameLayout
   }
 
   @Override
+  protected void onDetachedFromWindow() {
+    super.onDetachedFromWindow();
+
+    backOrchestrator.stopListeningForBackCallbacks();
+  }
+
+  @Override
   @NonNull
   public CoordinatorLayout.Behavior<SearchView> getBehavior() {
     return new SearchView.Behavior();
@@ -939,7 +946,7 @@ public class SearchView extends FrameLayout
   public void setModalForAccessibility(boolean isSearchViewModal) {
     ViewGroup rootView = (ViewGroup) this.getRootView();
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN && isSearchViewModal) {
+    if (isSearchViewModal) {
       childImportantForAccessibilityMap = new HashMap<>(rootView.getChildCount());
     }
     updateChildImportantForAccessibility(rootView, isSearchViewModal);
@@ -979,17 +986,13 @@ public class SearchView extends FrameLayout
         if (childImportantForAccessibilityMap != null
             && childImportantForAccessibilityMap.containsKey(child)) {
           // Restores the original important for accessibility value of the child view.
-          ViewCompat.setImportantForAccessibility(
-              child, childImportantForAccessibilityMap.get(child));
+          child.setImportantForAccessibility(childImportantForAccessibilityMap.get(child));
         }
       } else {
         // Saves the important for accessibility value of the child view.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-          childImportantForAccessibilityMap.put(child, child.getImportantForAccessibility());
-        }
+        childImportantForAccessibilityMap.put(child, child.getImportantForAccessibility());
 
-        ViewCompat.setImportantForAccessibility(
-            child, ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        child.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
       }
     }
   }

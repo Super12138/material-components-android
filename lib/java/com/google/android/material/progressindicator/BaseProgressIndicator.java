@@ -41,7 +41,6 @@ import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
 import androidx.annotation.StyleRes;
 import androidx.annotation.VisibleForTesting;
-import androidx.core.view.ViewCompat;
 import androidx.vectordrawable.graphics.drawable.Animatable2Compat.AnimationCallback;
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.internal.ThemeEnforcement;
@@ -164,13 +163,7 @@ public abstract class BaseProgressIndicator<S extends BaseProgressIndicatorSpec>
   // ******************** Initialization **********************
 
   private void registerAnimationCallbacks() {
-    if (getProgressDrawable() != null && getIndeterminateDrawable() != null) {
-      // Registers the animation callback to switch indeterminate mode at the end of indeterminate
-      // animation.
-      getIndeterminateDrawable()
-          .getAnimatorDelegate()
-          .registerAnimatorsCompleteCallback(switchIndeterminateModeCallback);
-    }
+    registerSwitchIndeterminateModeCallback();
 
     // Registers the hide animation callback to determinate drawable.
     if (getProgressDrawable() != null) {
@@ -179,6 +172,16 @@ public abstract class BaseProgressIndicator<S extends BaseProgressIndicatorSpec>
     // Registers the hide animation callback to indeterminate drawable.
     if (getIndeterminateDrawable() != null) {
       getIndeterminateDrawable().registerAnimationCallback(hideAnimationCallback);
+    }
+  }
+
+  void registerSwitchIndeterminateModeCallback() {
+    if (getProgressDrawable() != null && getIndeterminateDrawable() != null) {
+      // Registers the animation callback to switch indeterminate mode at the end of indeterminate
+      // animation.
+      getIndeterminateDrawable()
+          .getAnimatorDelegate()
+          .registerAnimatorsCompleteCallback(switchIndeterminateModeCallback);
     }
   }
 
@@ -444,7 +447,7 @@ public abstract class BaseProgressIndicator<S extends BaseProgressIndicatorSpec>
    * attached to a window and whether it and its ancestors are visible.
    */
   boolean visibleToUser() {
-    return ViewCompat.isAttachedToWindow(this)
+    return isAttachedToWindow()
         && getWindowVisibility() == View.VISIBLE
         && isEffectivelyVisible();
   }
