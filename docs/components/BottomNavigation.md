@@ -16,12 +16,12 @@ allow movement between primary destinations in an app.
 
 **Contents**
 
-*   [Design & API documentation](#design-api-documentation)
+*   [Design and API Documentation](#design-and-api-documentation)
 *   [Using bottom navigation](#using-bottom-navigation)
 *   [Bottom navigation bar](#bottom-navigation-bar)
 *   [Theming](#theming-a-bottom-navigation-bar)
 
-## Design & API Documentation
+## Design and API Documentation
 
 *   [Google Material3 Spec](https://material.io/components/navigation-bar/overview)
 *   [API Reference](https://developer.android.com/reference/com/google/android/material/bottomnavigation/package-summary)
@@ -285,6 +285,7 @@ The following is an anatomy diagram for the bottom navigation bar:
 **Size**             | `app:itemIconSize`                    | `setItemIconSize`<br/>`setItemIconSizeRes`<br/>`getItemIconSize` | `24dp`
 **Color (inactive)** | `app:itemIconTint`                    | `setItemIconTintList`<br/>`getItemIconTintList`                  | `?attr/colorOnSurfaceVariant` (see all [states](https://github.com/material-components/material-components-android/tree/master/lib/java/com/google/android/material/bottomnavigation/res/color/m3_navigation_bar_item_with_indicator_icon_tint.xml))
 **Color (active)**   | "                                     | "                                                                | `?attr/colorOnSecondaryContainer` (see all [states](https://github.com/material-components/material-components-android/tree/master/lib/java/com/google/android/material/bottomnavigation/res/color/m3_navigation_bar_item_with_indicator_icon_tint.xml))
+**Gravity**          | `app:itemIconGravity`                 | `setItemIconGravity`<br/>`getItemIconGravity`                    | `TOP`
 
 #### Text label attributes
 
