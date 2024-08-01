@@ -99,11 +99,13 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
     phaseAnimator.setRepeatCount(ValueAnimator.INFINITE);
     phaseAnimator.addUpdateListener(
         animation -> {
-          if (baseSpec.hasWavyEffect() && baseSpec.speed != 0 && isVisible()) {
+          if (baseSpec.hasWavyEffect(/* isDeterminate= */ true)
+              && baseSpec.waveSpeed != 0
+              && isVisible()) {
             invalidateSelf();
           }
         });
-    if (baseSpec.hasWavyEffect() && baseSpec.speed != 0) {
+    if (baseSpec.hasWavyEffect(/* isDeterminate= */ true) && baseSpec.waveSpeed != 0) {
       phaseAnimator.start();
     }
 
@@ -294,12 +296,12 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
   }
 
   private void maybeStartAmplitudeAnimator(int level) {
-    if (!baseSpec.hasWavyEffect()) {
+    if (!baseSpec.hasWavyEffect(/* isDeterminate= */ true)) {
       return;
     }
+    maybeInitializeAmplitudeAnimator();
     float newAmplitudeFraction = getAmplitudeFractionFromLevel(level);
     if (newAmplitudeFraction != targetAmplitudeFraction) {
-      maybeInitializeAmplitudeAnimator();
       if (amplitudeAnimator.isRunning()) {
         amplitudeAnimator.cancel();
       }
@@ -311,6 +313,8 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
         amplitudeInterpolator = amplitudeOffInterpolator;
         amplitudeAnimator.reverse();
       }
+    } else if (!amplitudeAnimator.isRunning()) {
+      setAmplitudeFraction(newAmplitudeFraction);
     }
   }
 
