@@ -117,22 +117,17 @@ public class TextAppearance {
 
     a.recycle();
 
-    if (VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) {
-      a = context.obtainStyledAttributes(id, R.styleable.MaterialTextAppearance);
-      hasLetterSpacing = a.hasValue(R.styleable.MaterialTextAppearance_android_letterSpacing);
-      letterSpacing = a.getFloat(R.styleable.MaterialTextAppearance_android_letterSpacing, 0);
-      if (VERSION.SDK_INT >= VERSION_CODES.O) {
-        int fontVariationSettingsIndex = MaterialResources.getIndexWithValue(
-            a,
-            R.styleable.MaterialTextAppearance_fontVariationSettings,
-            R.styleable.MaterialTextAppearance_android_fontVariationSettings);
-        fontVariationSettings = a.getString(fontVariationSettingsIndex);
-      }
-      a.recycle();
-    } else {
-      hasLetterSpacing = false;
-      letterSpacing = 0;
+    a = context.obtainStyledAttributes(id, R.styleable.MaterialTextAppearance);
+    hasLetterSpacing = a.hasValue(R.styleable.MaterialTextAppearance_android_letterSpacing);
+    letterSpacing = a.getFloat(R.styleable.MaterialTextAppearance_android_letterSpacing, 0);
+    if (VERSION.SDK_INT >= VERSION_CODES.O) {
+      int fontVariationSettingsIndex = MaterialResources.getIndexWithValue(
+          a,
+          R.styleable.MaterialTextAppearance_fontVariationSettings,
+          R.styleable.MaterialTextAppearance_android_fontVariationSettings);
+      fontVariationSettings = a.getString(fontVariationSettingsIndex);
     }
+    a.recycle();
   }
 
   /**
@@ -364,15 +359,11 @@ public class TextAppearance {
     textPaint.setTextSize(textSize);
 
     if (VERSION.SDK_INT >= VERSION_CODES.O) {
-      // TODO(b/264321145): Remove once variation settings in text appearances are fixed.
-      textPaint.setFontVariationSettings("");
       textPaint.setFontVariationSettings(fontVariationSettings);
     }
 
-    if (VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) {
-      if (hasLetterSpacing) {
-        textPaint.setLetterSpacing(letterSpacing);
-      }
+    if (hasLetterSpacing) {
+      textPaint.setLetterSpacing(letterSpacing);
     }
   }
 

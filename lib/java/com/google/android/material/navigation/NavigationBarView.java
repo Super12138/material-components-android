@@ -26,8 +26,6 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
-import android.os.Build.VERSION;
-import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
@@ -36,6 +34,7 @@ import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.view.menu.MenuView;
 import androidx.appcompat.widget.TintTypedArray;
 import android.util.AttributeSet;
+import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -132,6 +131,26 @@ public abstract class NavigationBarView extends FrameLayout {
   public static final int ITEM_ICON_GRAVITY_START = 1;
 
   /**
+   * Navigation Bar Item gravity enum to control where the item is in its container.
+   *
+   * @hide
+   */
+  @RestrictTo(LIBRARY_GROUP)
+  @IntDef(value = {ITEM_GRAVITY_TOP_CENTER, ITEM_GRAVITY_CENTER, ITEM_GRAVITY_START_CENTER})
+  @Retention(RetentionPolicy.SOURCE)
+  public @interface ItemGravity {}
+
+  /** Item is placed at the top center of its container */
+  public static final int ITEM_GRAVITY_TOP_CENTER = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+
+  /** Item is placed at the center of its container */
+  public static final int ITEM_GRAVITY_CENTER = Gravity.CENTER;
+
+  /** Item is placed at the start center of its container */
+  public static final int ITEM_GRAVITY_START_CENTER = Gravity.START | Gravity.CENTER_VERTICAL;
+
+
+  /**
    * Navigation Bar Item icon gravity enum to control which item configuration to display.
    *
    * <p>There are 2 item configurations. {@link NavigationBarView#ITEM_ICON_GRAVITY_START} shows the
@@ -182,11 +201,13 @@ public abstract class NavigationBarView extends FrameLayout {
             R.styleable.NavigationBarView_itemTextAppearanceActive);
 
     // Create the menu.
-    this.menu = new NavigationBarMenu(context, this.getClass(), getMaxItemCount());
+    this.menu =
+        new NavigationBarMenu(context, this.getClass(), getMaxItemCount(), isSubMenuSupported());
 
     // Create the menu view.
     menuView = createNavigationBarMenuView(context);
     menuView.setMinimumHeight(getSuggestedMinimumHeight());
+    menuView.setCollapsedMaxItemCount(getMaxItemCount());
 
     presenter.setMenuView(menuView);
     presenter.setId(MENU_PRESENTER_ID);
@@ -216,6 +237,16 @@ public abstract class NavigationBarView extends FrameLayout {
     if (attributes.hasValue(R.styleable.NavigationBarView_itemTextAppearanceActive)) {
       setItemTextAppearanceActive(
           attributes.getResourceId(R.styleable.NavigationBarView_itemTextAppearanceActive, 0));
+    }
+
+    if (attributes.hasValue(R.styleable.NavigationBarView_horizontalItemTextAppearanceInactive)) {
+      setHorizontalItemTextAppearanceInactive(
+          attributes.getResourceId(R.styleable.NavigationBarView_horizontalItemTextAppearanceInactive, 0));
+    }
+
+    if (attributes.hasValue(R.styleable.NavigationBarView_horizontalItemTextAppearanceActive)) {
+      setHorizontalItemTextAppearanceActive(
+          attributes.getResourceId(R.styleable.NavigationBarView_horizontalItemTextAppearanceActive, 0));
     }
 
     boolean isBold =
@@ -274,6 +305,9 @@ public abstract class NavigationBarView extends FrameLayout {
         attributes.getInteger(
             R.styleable.NavigationBarView_itemIconGravity,
             NavigationBarView.ITEM_ICON_GRAVITY_TOP));
+    setItemGravity(
+        attributes.getInteger(
+            R.styleable.NavigationBarView_itemGravity, NavigationBarView.ITEM_GRAVITY_TOP_CENTER));
 
     int itemBackground = attributes.getResourceId(R.styleable.NavigationBarView_itemBackground, 0);
     if (itemBackground != 0) {
@@ -398,9 +432,7 @@ public abstract class NavigationBarView extends FrameLayout {
    */
   @Override
   public void setElevation(float elevation) {
-    if (VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) {
-      super.setElevation(elevation);
-    }
+    super.setElevation(elevation);
     MaterialShapeUtils.setElevation(this, elevation);
   }
 
@@ -741,6 +773,29 @@ public abstract class NavigationBarView extends FrameLayout {
   }
 
   /**
+   * Sets the navigation items' layout gravity.
+   *
+   * @param itemGravity the layout {@link android.view.Gravity} of the item
+   * @see #getItemGravity()
+   */
+  public void setItemGravity(@ItemGravity int itemGravity) {
+    if (menuView.getItemIconGravity() != itemGravity) {
+      menuView.setItemGravity(itemGravity);
+      presenter.updateMenuView(false);
+    }
+  }
+
+  /**
+   * Returns the navigation items' layout gravity.
+   *
+   * @see #setItemGravity(int)
+   */
+  @ItemGravity
+  public int getItemGravity() {
+    return menuView.getItemGravity();
+  }
+
+  /**
    * Get the width of an item's active indicator when it is expanded to wrap the item content, ie.
    * when it is in the {@link ItemIconGravity#ITEM_ICON_GRAVITY_START} configuration.
    *
@@ -864,8 +919,11 @@ public abstract class NavigationBarView extends FrameLayout {
   public void setSelectedItemId(@IdRes int itemId) {
     MenuItem item = menu.findItem(itemId);
     if (item != null) {
-      if (!menu.performItemAction(item, presenter, 0)) {
-        item.setChecked(true);
+      boolean result = menu.performItemAction(item, presenter, 0);
+      // If the item action was not invoked successfully (ie if there's no listener) or if
+      // the item was checked through the action, we should update the checked item.
+      if (item.isCheckable() && (!result || item.isChecked())) {
+        menuView.setCheckedItem(item);
       }
     }
   }
@@ -955,15 +1013,6 @@ public abstract class NavigationBarView extends FrameLayout {
   }
 
   /**
-   * Sets whether the active menu item labels are bold.
-   *
-   * @param isBold whether the active menu item labels are bold
-   */
-  public void setItemTextAppearanceActiveBoldEnabled(boolean isBold) {
-    menuView.setItemTextAppearanceActiveBoldEnabled(isBold);
-  }
-
-  /**
    * Returns the text appearance used for the active menu item label.
    *
    * @return the text appearance ID used for the active menu item label
@@ -971,6 +1020,60 @@ public abstract class NavigationBarView extends FrameLayout {
   @StyleRes
   public int getItemTextAppearanceActive() {
     return menuView.getItemTextAppearanceActive();
+  }
+
+  /**
+   * Sets the text appearance to be used for inactive menu item labels when they are in the
+   * horizontal item layout (when the start icon value is {@link
+   * ItemIconGravity#ITEM_ICON_GRAVITY_START}).
+   *
+   * @param textAppearanceRes the text appearance ID used for inactive menu item labels
+   */
+  public void setHorizontalItemTextAppearanceInactive(@StyleRes int textAppearanceRes) {
+    menuView.setHorizontalItemTextAppearanceInactive(textAppearanceRes);
+  }
+
+  /**
+   * Returns the text appearance used for inactive menu item labels when they are in the
+   * horizontal item layout (when the start icon value is {@link
+   * ItemIconGravity#ITEM_ICON_GRAVITY_START}).
+   *
+   * @return the text appearance ID used for inactive menu item labels
+   */
+  @StyleRes
+  public int getHorizontalItemTextAppearanceInactive() {
+    return menuView.getHorizontalItemTextAppearanceInactive();
+  }
+
+  /**
+   * Sets the text appearance to be used for the menu item labels when they are in the horizontal
+   * item layout (when the start icon value is {@link ItemIconGravity#ITEM_ICON_GRAVITY_START}).
+   *
+   * @param textAppearanceRes the text appearance ID used for menu item labels
+   */
+  public void setHorizontalItemTextAppearanceActive(@StyleRes int textAppearanceRes) {
+    menuView.setHorizontalItemTextAppearanceActive(textAppearanceRes);
+  }
+
+  /**
+   * Returns the text appearance used for the active menu item label when they are in the
+   * horizontal item layout (when the start icon value is {@link
+   * ItemIconGravity#ITEM_ICON_GRAVITY_START}).
+   *
+   * @return the text appearance ID used for the active menu item label
+   */
+  @StyleRes
+  public int getHorizontalItemTextAppearanceActive() {
+    return menuView.getHorizontalItemTextAppearanceActive();
+  }
+
+  /**
+   * Sets whether the active menu item labels are bold.
+   *
+   * @param isBold whether the active menu item labels are bold
+   */
+  public void setItemTextAppearanceActiveBoldEnabled(boolean isBold) {
+    menuView.setItemTextAppearanceActiveBoldEnabled(isBold);
   }
 
   /**
@@ -1045,6 +1148,12 @@ public abstract class NavigationBarView extends FrameLayout {
 
   /** Returns the maximum number of items that can be shown in NavigationBarView. */
   public abstract int getMaxItemCount();
+
+  /** Returns whether or not submenus are supported. */
+  protected boolean isSubMenuSupported() {
+    // TODO: b/352634230 - NavigationRail should support submenus once ready
+    return false;
+  }
 
   /**
    * Returns reference to a newly created {@link NavigationBarMenuView}
