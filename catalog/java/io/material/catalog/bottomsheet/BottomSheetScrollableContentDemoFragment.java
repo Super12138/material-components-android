@@ -50,7 +50,7 @@ public class BottomSheetScrollableContentDemoFragment extends DemoFragment {
 
   @LayoutRes
   protected int getDemoContent() {
-    return R.layout.cat_bottomsheet_scrollable_content_fragment;
+    return R.layout.cat_bottomsheet_additional_demo_fragment;
   }
 
   /** A custom bottom sheet dialog fragment. */
