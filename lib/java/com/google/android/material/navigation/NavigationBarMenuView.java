@@ -36,6 +36,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.TextView;
 import androidx.annotation.Dimension;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -103,6 +104,7 @@ public abstract class NavigationBarMenuView extends ViewGroup implements MenuVie
   private int itemPaddingTop = NO_PADDING;
   private int itemPaddingBottom = NO_PADDING;
   private int itemActiveIndicatorLabelPadding = NO_PADDING;
+  private int iconLabelHorizontalSpacing = NO_PADDING;
   private boolean itemActiveIndicatorEnabled;
   private int itemActiveIndicatorWidth;
   private int itemActiveIndicatorHeight;
@@ -138,6 +140,7 @@ public abstract class NavigationBarMenuView extends ViewGroup implements MenuVie
     } else {
       set = new AutoTransition();
       set.setOrdering(TransitionSet.ORDERING_TOGETHER);
+      set.excludeTarget(TextView.class, true);
       set.setDuration(
           MotionUtils.resolveThemeDuration(
               getContext(),
@@ -517,6 +520,33 @@ public abstract class NavigationBarMenuView extends ViewGroup implements MenuVie
         if (item instanceof NavigationBarItemView) {
           ((NavigationBarItemView) item)
               .setActiveIndicatorLabelPadding(activeIndicatorLabelPadding);
+        }
+      }
+    }
+  }
+
+  /**
+   * Get the horizontal distance between the item's icon and the label which
+   * is shown when the item is in the {@link NavigationBarView#ITEM_ICON_GRAVITY_START}
+   * configuration.
+   */
+  @Px
+  public int getIconLabelHorizontalSpacing() {
+    return iconLabelHorizontalSpacing;
+  }
+
+  /**
+   * Set the horizontal distance between the icon and the label which is shown when the item is in
+   * the {@link NavigationBarView#ITEM_ICON_GRAVITY_START} configuration.
+   */
+  public void setIconLabelHorizontalSpacing(
+      @Px int iconLabelHorizontalSpacing) {
+    this.iconLabelHorizontalSpacing = iconLabelHorizontalSpacing;
+    if (buttons != null) {
+      for (NavigationBarMenuItemView item : buttons) {
+        if (item instanceof NavigationBarItemView) {
+          ((NavigationBarItemView) item)
+              .setIconLabelHorizontalSpacing(iconLabelHorizontalSpacing);
         }
       }
     }
@@ -1051,6 +1081,9 @@ public abstract class NavigationBarMenuView extends ViewGroup implements MenuVie
     child.setMeasureBottomPaddingFromLabelBaseline(measurePaddingFromLabelBaseline);
     if (itemActiveIndicatorLabelPadding != NO_PADDING) {
       child.setActiveIndicatorLabelPadding(itemActiveIndicatorLabelPadding);
+    }
+    if (iconLabelHorizontalSpacing != NO_PADDING) {
+      child.setIconLabelHorizontalSpacing(iconLabelHorizontalSpacing);
     }
     child.setActiveIndicatorWidth(itemActiveIndicatorWidth);
     child.setActiveIndicatorHeight(itemActiveIndicatorHeight);
