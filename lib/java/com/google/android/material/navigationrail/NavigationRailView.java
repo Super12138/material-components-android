@@ -26,11 +26,13 @@ import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 import android.animation.TimeInterpolator;
+import android.annotation.SuppressLint;
 import android.content.Context;
 import androidx.appcompat.widget.TintTypedArray;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
@@ -52,6 +54,7 @@ import com.google.android.material.animation.AnimationUtils;
 import com.google.android.material.internal.ThemeEnforcement;
 import com.google.android.material.internal.ViewUtils;
 import com.google.android.material.internal.ViewUtils.RelativePadding;
+import com.google.android.material.navigation.NavigationBarDividerView;
 import com.google.android.material.navigation.NavigationBarItemView;
 import com.google.android.material.navigation.NavigationBarView;
 import com.google.android.material.resources.MaterialResources;
@@ -133,6 +136,7 @@ public class NavigationRailView extends NavigationBarView {
   private final int minExpandedWidth;
   private final int maxExpandedWidth;
   private final boolean scrollingEnabled;
+  private boolean submenuDividersEnabled;
   @Nullable private View headerView;
   @Nullable private Boolean paddingTopSystemWindowInsets = null;
   @Nullable private Boolean paddingBottomSystemWindowInsets = null;
@@ -169,22 +173,10 @@ public class NavigationRailView extends NavigationBarView {
 
     // Ensure we are using the correctly themed context rather than the context that was passed in.
     context = getContext();
-    minExpandedWidth =
-        getContext()
-            .getResources()
-            .getDimensionPixelSize(R.dimen.m3_navigation_rail_min_expanded_width);
-    maxExpandedWidth =
-        getContext()
-            .getResources()
-            .getDimensionPixelSize(R.dimen.m3_navigation_rail_max_expanded_width);
     expandedItemSpacing =
         getContext()
             .getResources()
             .getDimensionPixelSize(R.dimen.m3_navigation_rail_expanded_item_spacing);
-    expandedItemMinHeight =
-        getContext()
-            .getResources()
-            .getDimensionPixelSize(R.dimen.m3_navigation_rail_expanded_item_min_height);
     expandedItemGravity = ITEM_GRAVITY_START_CENTER;
     expandedIconGravity = ITEM_ICON_GRAVITY_START;
 
@@ -202,6 +194,7 @@ public class NavigationRailView extends NavigationBarView {
             getResources().getDimensionPixelSize(R.dimen.mtrl_navigation_rail_margin));
     scrollingEnabled =
         attributes.getBoolean(R.styleable.NavigationRailView_scrollingEnabled, false);
+    setSubmenuDividersEnabled(attributes.getBoolean(R.styleable.NavigationRailView_submenuDividersEnabled, false));
 
     addContentContainer();
 
@@ -213,11 +206,31 @@ public class NavigationRailView extends NavigationBarView {
     setMenuGravity(
         attributes.getInt(R.styleable.NavigationRailView_menuGravity, DEFAULT_MENU_GRAVITY));
 
-    if (attributes.hasValue(R.styleable.NavigationRailView_itemMinHeight)) {
-      setCollapsedItemMinimumHeight(
-          attributes.getDimensionPixelSize(
-              R.styleable.NavigationRailView_itemMinHeight, NO_ITEM_MINIMUM_HEIGHT));
+    int collapsedItemMinHeight = attributes.getDimensionPixelSize(
+        R.styleable.NavigationRailView_itemMinHeight, NO_ITEM_MINIMUM_HEIGHT);
+    int expandedItemMinHeight = attributes.getDimensionPixelSize(
+        R.styleable.NavigationRailView_itemMinHeight, NO_ITEM_MINIMUM_HEIGHT);
+
+    if (attributes.hasValue(R.styleable.NavigationRailView_collapsedItemMinHeight)) {
+      collapsedItemMinHeight = attributes.getDimensionPixelSize(
+          R.styleable.NavigationRailView_collapsedItemMinHeight, NO_ITEM_MINIMUM_HEIGHT);
     }
+    if (attributes.hasValue(R.styleable.NavigationRailView_expandedItemMinHeight)) {
+      expandedItemMinHeight = attributes.getDimensionPixelSize(
+          R.styleable.NavigationRailView_expandedItemMinHeight, NO_ITEM_MINIMUM_HEIGHT);
+    }
+    setCollapsedItemMinimumHeight(collapsedItemMinHeight);
+    setExpandedItemMinimumHeight(expandedItemMinHeight);
+    minExpandedWidth = attributes.getDimensionPixelSize(
+          R.styleable.NavigationRailView_expandedMinWidth,
+          context
+              .getResources()
+              .getDimensionPixelSize(R.dimen.m3_navigation_rail_min_expanded_width));
+    maxExpandedWidth = attributes.getDimensionPixelSize(
+        R.styleable.NavigationRailView_expandedMaxWidth,
+        context
+            .getResources()
+            .getDimensionPixelSize(R.dimen.m3_navigation_rail_max_expanded_width));
 
     if (attributes.hasValue(R.styleable.NavigationRailView_paddingTopSystemWindowInsets)) {
       paddingTopSystemWindowInsets =
@@ -439,7 +452,7 @@ public class NavigationRailView extends NavigationBarView {
     int maxChildWidth = 0;
     for (int i = 0; i < childCount; i++) {
       View child = getNavigationRailMenuView().getChildAt(i);
-      if (child.getVisibility() != GONE) {
+      if (child.getVisibility() != GONE && !(child instanceof NavigationBarDividerView)) {
         maxChildWidth = max(maxChildWidth, child.getMeasuredWidth());
       }
     }
@@ -569,6 +582,50 @@ public class NavigationRailView extends NavigationBarView {
   }
 
   /**
+   * Gets the minimum height of a navigation rail menu item when the navigation rail is collapsed.
+   */
+  public int getCollapsedItemMinimumHeight() {
+    return collapsedItemMinHeight;
+  }
+
+  /**
+   * Sets the minimum height of a navigation rail menu item when the navigation rail is expanded.
+   *
+   * @param minHeight the min height of the item when the nav rail is collapsed
+   */
+  public void setExpandedItemMinimumHeight(@Px int minHeight) {
+    expandedItemMinHeight = minHeight;
+    if (expanded) {
+      ((NavigationRailMenuView) getMenuView()).setItemMinimumHeight(minHeight);
+    }
+  }
+
+  /**
+   * Gets the minimum height of a navigation rail menu item when the navigation rail is expanded.
+   */
+  public int getExpandedItemMinimumHeight() {
+    return expandedItemMinHeight;
+  }
+
+  /**
+   * Set whether or not to enable the dividers which go between each subgroup in the menu.
+   */
+  public void setSubmenuDividersEnabled(boolean submenuDividersEnabled) {
+    if (this.submenuDividersEnabled == submenuDividersEnabled) {
+      return;
+    }
+    this.submenuDividersEnabled = submenuDividersEnabled;
+    getNavigationRailMenuView().setSubmenuDividersEnabled(submenuDividersEnabled);
+  }
+
+  /**
+   * Get whether or not to enable the dividers which go between each subgroup in the menu.
+   */
+  public boolean getSubmenuDividersEnabled() {
+    return submenuDividersEnabled;
+  }
+
+  /**
    * Set the padding in between the navigation rail menu items.
    */
   public void setItemSpacing(@Px int itemSpacing) {
@@ -677,6 +734,14 @@ public class NavigationRailView extends NavigationBarView {
   @RestrictTo(LIBRARY_GROUP)
   @Override
   public boolean shouldAddMenuView() {
+    return true;
+  }
+
+  @SuppressLint("ClickableViewAccessibility")
+  @Override
+  public boolean onTouchEvent(@NonNull MotionEvent event) {
+    super.onTouchEvent(event);
+    // Consume all events to avoid views under the BottomNavigationView from receiving touch events.
     return true;
   }
 }

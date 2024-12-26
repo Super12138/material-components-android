@@ -17,12 +17,24 @@
   xmlns:android="http://schemas.android.com/apk/res/android"
   xmlns:app="http://schemas.android.com/apk/res-auto"
   android:layout_width="match_parent"
-  android:layout_height="match_parent"
-  android:padding="8dp">
+  android:layout_height="match_parent">
+
+  <com.google.android.material.appbar.AppBarLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fitsSystemWindows="true">
+    <androidx.appcompat.widget.Toolbar
+      style="?attr/catalogToolbarWithCloseButtonStyle"
+      android:id="@+id/toolbar"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      app:title="@string/cat_floating_toolbar_title"/>
+  </com.google.android.material.appbar.AppBarLayout>
 
   <androidx.core.widget.NestedScrollView
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    app:layout_behavior="@string/appbar_scrolling_view_behavior">
     <LinearLayout
       android:id="@+id/body_container"
       android:layout_width="match_parent"
@@ -75,7 +87,7 @@
 
   <com.google.android.material.floatingtoolbar.FloatingToolbarLayout
     android:id="@+id/floating_toolbar_left"
-    style="@style/Widget.Material3.FloatingToolbar.Vertical"
+    style="@style/Widget.Material3.FloatingToolbar.Vertical.Vibrant"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:layout_gravity="left|center"
@@ -84,8 +96,7 @@
       android:id="@+id/floating_toolbar_child_left"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
-      android:layout_gravity="center"
-      android:orientation="vertical">
+      android:layout_gravity="center">
       <include layout="@layout/cat_floating_toolbar_content" />
     </LinearLayout>
   </com.google.android.material.floatingtoolbar.FloatingToolbarLayout>
@@ -100,23 +111,21 @@
       android:id="@+id/floating_toolbar_child_right"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
-      android:layout_gravity="center"
-      android:orientation="vertical">
+      android:layout_gravity="center">
       <include layout="@layout/cat_floating_toolbar_content" />
     </LinearLayout>
   </com.google.android.material.floatingtoolbar.FloatingToolbarLayout>
 
   <com.google.android.material.floatingtoolbar.FloatingToolbarLayout
     android:id="@+id/floating_toolbar_bottom"
-    style="@style/Widget.Material3.FloatingToolbar.Horizontal"
+    style="@style/Widget.Material3.FloatingToolbar.Horizontal.Vibrant"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content">
     <LinearLayout
       android:id="@+id/floating_toolbar_child_bottom"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
-      android:layout_gravity="center"
-      android:orientation="horizontal">
+      android:layout_gravity="center">
       <include layout="@layout/cat_floating_toolbar_content" />
     </LinearLayout>
   </com.google.android.material.floatingtoolbar.FloatingToolbarLayout>

@@ -1473,7 +1473,7 @@ abstract class BaseSlider<
   public void setLabelBehavior(@LabelBehavior int labelBehavior) {
     if (this.labelBehavior != labelBehavior) {
       this.labelBehavior = labelBehavior;
-      requestLayout();
+      updateWidgetLayout(true);
     }
   }
 
@@ -1607,7 +1607,7 @@ abstract class BaseSlider<
   }
 
   private void updateRotationMatrix() {
-    float pivot = widgetThickness / 2f;
+    float pivot = calculateTrackCenter();
     rotationMatrix.reset();
     rotationMatrix.setRotate(90, pivot, pivot);
   }
@@ -2320,8 +2320,7 @@ abstract class BaseSlider<
   protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
     int labelSize = 0;
     if (labelBehavior == LABEL_WITHIN_BOUNDS || shouldAlwaysShowLabel()) {
-      labelSize =
-          isVertical() ? labels.get(0).getIntrinsicWidth() : labels.get(0).getIntrinsicHeight();
+      labelSize = labels.get(0).getIntrinsicHeight();
     }
     int spec = MeasureSpec.makeMeasureSpec(widgetThickness + labelSize, MeasureSpec.EXACTLY);
     if (isVertical()) {
@@ -2394,7 +2393,7 @@ abstract class BaseSlider<
   private int calculateTrackCenter() {
     return widgetThickness / 2
         + (labelBehavior == LABEL_WITHIN_BOUNDS || shouldAlwaysShowLabel()
-            ? isVertical() ? labels.get(0).getIntrinsicWidth() : labels.get(0).getIntrinsicHeight()
+            ? labels.get(0).getIntrinsicHeight()
             : 0);
   }
 
@@ -2448,26 +2447,33 @@ abstract class BaseSlider<
   }
 
   private void drawInactiveTrack(@NonNull Canvas canvas, int width, int yCenter) {
+    int trackCornerSize = getTrackCornerSize();
     float[] activeRange = getActiveRange();
     float right = trackSidePadding + activeRange[1] * width;
     if (right < trackSidePadding + width) {
       inactiveTrackRect.set(
           right + thumbTrackGapSize,
           yCenter - trackThickness / 2f,
-          trackSidePadding + width + getTrackCornerSize(),
+          trackSidePadding + width + trackCornerSize,
           yCenter + trackThickness / 2f);
-      updateTrack(canvas, inactiveTrackPaint, inactiveTrackRect, FullCornerDirection.RIGHT);
+      updateTrack(
+          canvas,
+          inactiveTrackPaint,
+          inactiveTrackRect,
+          trackCornerSize,
+          FullCornerDirection.RIGHT);
     }
 
     // Also draw inactive track to the left if there is any
     float left = trackSidePadding + activeRange[0] * width;
     if (left > trackSidePadding) {
       inactiveTrackRect.set(
-          trackSidePadding - getTrackCornerSize(),
+          trackSidePadding - trackCornerSize,
           yCenter - trackThickness / 2f,
           left - thumbTrackGapSize,
           yCenter + trackThickness / 2f);
-      updateTrack(canvas, inactiveTrackPaint, inactiveTrackRect, FullCornerDirection.LEFT);
+      updateTrack(
+          canvas, inactiveTrackPaint, inactiveTrackRect, trackCornerSize, FullCornerDirection.LEFT);
     }
   }
 
@@ -2506,18 +2512,19 @@ abstract class BaseSlider<
         }
       }
 
+      int trackCornerSize = getTrackCornerSize();
       switch (direction) {
         case NONE:
           left += thumbTrackGapSize;
           right -= thumbTrackGapSize;
           break;
         case LEFT:
-          left -= getTrackCornerSize();
+          left -= trackCornerSize;
           right -= thumbTrackGapSize;
           break;
         case RIGHT:
           left += thumbTrackGapSize;
-          right += getTrackCornerSize();
+          right += trackCornerSize;
           break;
         default:
           // fall through
@@ -2530,8 +2537,32 @@ abstract class BaseSlider<
 
       activeTrackRect.set(
           left, yCenter - trackThickness / 2f, right, yCenter + trackThickness / 2f);
-      updateTrack(canvas, activeTrackPaint, activeTrackRect, direction);
+      updateTrack(canvas, activeTrackPaint, activeTrackRect, trackCornerSize, direction);
     }
+  }
+
+  private float calculateStartTrackCornerSize(float trackCornerSize) {
+    if (values.isEmpty() || !hasGapBetweenThumbAndTrack()) {
+      return trackCornerSize;
+    }
+    int firstIdx = isRtl() || isVertical() ? values.size() - 1 : 0;
+    float currentX = valueToX(values.get(firstIdx)) - trackSidePadding;
+    if (currentX < trackCornerSize) {
+      return max(currentX, trackInsideCornerSize);
+    }
+    return trackCornerSize;
+  }
+
+  private float calculateEndTrackCornerSize(float trackCornerSize) {
+    if (values.isEmpty() || !hasGapBetweenThumbAndTrack()) {
+      return trackCornerSize;
+    }
+    int lastIdx = isRtl() || isVertical() ? 0 : values.size() - 1;
+    float currentX = valueToX(values.get(lastIdx)) - trackSidePadding;
+    if (currentX > trackWidth - trackCornerSize) {
+      return max(trackWidth - currentX, trackInsideCornerSize);
+    }
+    return trackCornerSize;
   }
 
   private void drawTrackIcons(
@@ -2620,9 +2651,9 @@ abstract class BaseSlider<
   }
 
   private void updateTrack(
-      Canvas canvas, Paint paint, RectF bounds, FullCornerDirection direction) {
-    float leftCornerSize = getTrackCornerSize();
-    float rightCornerSize = getTrackCornerSize();
+      Canvas canvas, Paint paint, RectF bounds, float cornerSize, FullCornerDirection direction) {
+    float leftCornerSize = calculateStartTrackCornerSize(cornerSize);
+    float rightCornerSize = calculateEndTrackCornerSize(cornerSize);
     switch (direction) {
       case BOTH:
         break;
@@ -2742,12 +2773,12 @@ abstract class BaseSlider<
   }
 
   private void maybeDrawStopIndicator(@NonNull Canvas canvas, int yCenter) {
-    if (trackStopIndicatorSize <= 0) {
+    if (trackStopIndicatorSize <= 0 || values.isEmpty()) {
       return;
     }
 
     // Draw stop indicator at the end of the track.
-    if (!values.isEmpty() && values.get(values.size() - 1) < valueTo) {
+    if (values.get(values.size() - 1) < valueTo) {
       drawStopIndicator(canvas, valueToX(valueTo), yCenter);
     }
     // Multiple thumbs, inactive track may be visible at the start.
@@ -3273,17 +3304,24 @@ abstract class BaseSlider<
   }
 
   private void calculateLabelBounds(TooltipDrawable label, float value) {
-    int left =
-        trackSidePadding
-            + (int) (normalizeValue(value) * trackWidth)
-            - label.getIntrinsicWidth() / 2;
-    int right = left + label.getIntrinsicWidth();
+    int left;
+    int right;
     int bottom;
     int top;
     if (isVertical() && !isRtl()) {
+      left =
+          trackSidePadding
+              + (int) (normalizeValue(value) * trackWidth)
+              - label.getIntrinsicHeight() / 2;
+      right = left + label.getIntrinsicHeight();
       top = calculateTrackCenter() + (labelPadding + thumbHeight / 2);
-      bottom = top + label.getIntrinsicHeight();
+      bottom = top + label.getIntrinsicWidth();
     } else {
+      left =
+          trackSidePadding
+              + (int) (normalizeValue(value) * trackWidth)
+              - label.getIntrinsicWidth() / 2;
+      right = left + label.getIntrinsicWidth();
       bottom = calculateTrackCenter() - (labelPadding + thumbHeight / 2);
       top = bottom - label.getIntrinsicHeight();
     }
@@ -3752,7 +3790,7 @@ abstract class BaseSlider<
     virtualViewBounds.set((int) rect.left, (int) rect.top, (int) rect.right, (int) rect.bottom);
   }
 
-  private static class AccessibilityHelper extends ExploreByTouchHelper {
+  public static class AccessibilityHelper extends ExploreByTouchHelper {
 
     private final BaseSlider<?, ?, ?> slider;
     final Rect virtualViewBounds = new Rect();
@@ -3775,7 +3813,7 @@ abstract class BaseSlider<
     }
 
     @Override
-    protected void getVisibleVirtualViews(List<Integer> virtualViewIds) {
+    protected void getVisibleVirtualViews(@NonNull List<Integer> virtualViewIds) {
       for (int i = 0; i < slider.getValues().size(); i++) {
         virtualViewIds.add(i);
       }
@@ -3783,7 +3821,7 @@ abstract class BaseSlider<
 
     @Override
     protected void onPopulateNodeForVirtualView(
-        int virtualViewId, AccessibilityNodeInfoCompat info) {
+        int virtualViewId, @NonNull AccessibilityNodeInfoCompat info) {
 
       info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SET_PROGRESS);
 
@@ -3824,7 +3862,8 @@ abstract class BaseSlider<
       if (values.size() > 1) {
         verbalValueType = startOrEndDescription(virtualViewId);
       }
-      contentDescription.append(String.format(Locale.US, "%s, %s", verbalValueType, verbalValue));
+      contentDescription.append(
+          String.format(Locale.getDefault(), "%s, %s", verbalValueType, verbalValue));
       info.setContentDescription(contentDescription.toString());
 
       slider.updateBoundsForVirtualViewId(virtualViewId, virtualViewBounds);
@@ -3847,7 +3886,7 @@ abstract class BaseSlider<
 
     @Override
     protected boolean onPerformActionForVirtualView(
-        int virtualViewId, int action, Bundle arguments) {
+        int virtualViewId, int action, @Nullable Bundle arguments) {
       if (!slider.isEnabled()) {
         return false;
       }
@@ -3879,7 +3918,7 @@ abstract class BaseSlider<
             }
 
             // Swap the increment if we're in RTL.
-            if (slider.isRtl() || slider.isVertical()) {
+            if (slider.isRtl()) {
               increment = -increment;
             }
 
