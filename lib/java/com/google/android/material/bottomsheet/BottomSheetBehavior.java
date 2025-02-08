@@ -33,6 +33,7 @@ import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.SparseIntArray;
@@ -559,8 +560,7 @@ public class BottomSheetBehavior<V extends View> extends CoordinatorLayout.Behav
       if (materialShapeDrawable != null) {
         child.setBackground(materialShapeDrawable);
         // Use elevation attr if set on bottomsheet; otherwise, use elevation of child view.
-        materialShapeDrawable.setElevation(
-            elevation == -1 ? ViewCompat.getElevation(child) : elevation);
+        materialShapeDrawable.setElevation(elevation == -1 ? child.getElevation() : elevation);
       } else if (backgroundTint != null) {
         ViewCompat.setBackgroundTintList(child, backgroundTint);
       }
@@ -1217,7 +1217,7 @@ public class BottomSheetBehavior<V extends View> extends CoordinatorLayout.Behav
     return draggableOnNestedScroll;
   }
 
-  /*
+  /**
    * Sets the velocity threshold considered significant enough to trigger a slide
    * to the next stable state.
    *
@@ -1229,7 +1229,7 @@ public class BottomSheetBehavior<V extends View> extends CoordinatorLayout.Behav
     this.significantVelocityThreshold = significantVelocityThreshold;
   }
 
-  /*
+  /**
    * Returns the significant velocity threshold.
    *
    * @see #setSignificantVelocityThreshold(int)
@@ -1692,7 +1692,7 @@ public class BottomSheetBehavior<V extends View> extends CoordinatorLayout.Behav
     if (view.getVisibility() != View.VISIBLE) {
       return null;
     }
-    if (ViewCompat.isNestedScrollingEnabled(view)) {
+    if (view.isNestedScrollingEnabled()) {
       return view;
     }
     if (view instanceof ViewGroup) {
@@ -1900,7 +1900,7 @@ public class BottomSheetBehavior<V extends View> extends CoordinatorLayout.Behav
               return false;
             }
           }
-          viewCapturedMillis = System.currentTimeMillis();
+          viewCapturedMillis = SystemClock.uptimeMillis();
           return viewRef != null && viewRef.get() == child;
         }
 
@@ -1930,7 +1930,7 @@ public class BottomSheetBehavior<V extends View> extends CoordinatorLayout.Behav
               targetState = STATE_EXPANDED;
             } else {
               int currentTop = releasedChild.getTop();
-              long dragDurationMillis = System.currentTimeMillis() - viewCapturedMillis;
+              long dragDurationMillis = SystemClock.uptimeMillis() - viewCapturedMillis;
 
               if (shouldSkipHalfExpandedStateWhenDragging()) {
                 float yPositionPercentage = currentTop * 100f / parentHeight;

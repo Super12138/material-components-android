@@ -29,6 +29,9 @@ import static com.google.android.material.slider.LabelFormatter.LABEL_VISIBLE;
 import static com.google.android.material.slider.LabelFormatter.LABEL_WITHIN_BOUNDS;
 import static com.google.android.material.slider.SliderOrientation.HORIZONTAL;
 import static com.google.android.material.slider.SliderOrientation.VERTICAL;
+import static com.google.android.material.slider.TickVisibilityMode.TICK_VISIBILITY_AUTO_HIDE;
+import static com.google.android.material.slider.TickVisibilityMode.TICK_VISIBILITY_AUTO_LIMIT;
+import static com.google.android.material.slider.TickVisibilityMode.TICK_VISIBILITY_HIDDEN;
 import static com.google.android.material.theme.overlay.MaterialThemeOverlay.wrap;
 import static java.lang.Float.compare;
 import static java.lang.Math.abs;
@@ -157,8 +160,10 @@ import java.util.Locale;
  *       discrete mode. This is a short hand for setting both the {@code tickColorActive} and {@code
  *       tickColorInactive} to the same thing. This takes precedence over {@code tickColorActive}
  *       and {@code tickColorInactive}.
- *   <li>{@code tickVisible}: Whether to show the tick marks. Only used when the slider is in
- *       discrete mode.
+ *   <li>{@code tickVisible} (<b>deprecated</b>, use {@code tickVisibilityMode} instead): Whether to
+ *       show the tick marks. Only used when the slider is in discrete mode.
+ *   <li>{@code tickVisibilityMode}: Mode to specify the visibility of tick marks. Only used when
+ *       the slider is in discrete mode.
  *   <li>{@code trackColorActive}: The color of the active part of the track.
  *   <li>{@code trackColorInactive}: The color of the inactive part of the track.
  *   <li>{@code trackColor}: The color of the whole track. This is a short hand for setting both the
@@ -210,6 +215,7 @@ import java.util.Locale;
  * @attr ref com.google.android.material.R.styleable#Slider_tickColorActive
  * @attr ref com.google.android.material.R.styleable#Slider_tickColorInactive
  * @attr ref com.google.android.material.R.styleable#Slider_tickVisible
+ * @attr ref com.google.android.material.R.styleable#Slider_tickVisibilityMode
  * @attr ref com.google.android.material.R.styleable#Slider_trackColor
  * @attr ref com.google.android.material.R.styleable#Slider_trackColorActive
  * @attr ref com.google.android.material.R.styleable#Slider_trackColorInactive
@@ -240,8 +246,6 @@ abstract class BaseSlider<
           + " stepSize(%s)";
   private static final String EXCEPTION_ILLEGAL_VALUE_FROM =
       "valueFrom(%s) must be smaller than valueTo(%s)";
-  private static final String EXCEPTION_ILLEGAL_VALUE_TO =
-      "valueTo(%s) must be greater than valueFrom(%s)";
   private static final String EXCEPTION_ILLEGAL_STEP_SIZE =
       "The stepSize(%s) must be 0, or a factor of the valueFrom(%s)-valueTo(%s) range";
   private static final String EXCEPTION_ILLEGAL_MIN_SEPARATION =
@@ -265,6 +269,7 @@ abstract class BaseSlider<
   private static final double THRESHOLD = .0001;
   private static final float THUMB_WIDTH_PRESSED_RATIO = .5f;
   private static final int TRACK_CORNER_SIZE_UNSET = -1;
+  private static final float TOUCH_SLOP_RATIO = .8f;
 
   static final int DEF_STYLE_RES = R.style.Widget_MaterialComponents_Slider;
   static final int UNIT_VALUE = 1;
@@ -278,6 +283,15 @@ abstract class BaseSlider<
       R.attr.motionEasingEmphasizedInterpolator;
   private static final int LABEL_ANIMATION_EXIT_EASING_ATTR =
       R.attr.motionEasingEmphasizedAccelerateInterpolator;
+
+  private static final float TOP_LABEL_PIVOT_X = 0.5f;
+  private static final float TOP_LABEL_PIVOT_Y = 1.2f;
+
+  private static final float LEFT_LABEL_PIVOT_X = 1.2f;
+  private static final float LEFT_LABEL_PIVOT_Y = 0.5f;
+
+  private static final float RIGHT_LABEL_PIVOT_X = -0.2f;
+  private static final float RIGHT_LABEL_PIVOT_Y = 0.5f;
 
   @Dimension(unit = Dimension.DP)
   private static final int MIN_TOUCH_TARGET_DP = 48;
@@ -330,14 +344,20 @@ abstract class BaseSlider<
   private int trackCornerSize;
   private int trackInsideCornerSize;
   @Nullable private Drawable trackIconActiveStart;
+  private boolean trackIconActiveStartMutated = false;
   @Nullable private Drawable trackIconActiveEnd;
+  private boolean trackIconActiveEndMutated = false;
   @Nullable private ColorStateList trackIconActiveColor;
   @Nullable private Drawable trackIconInactiveStart;
+  private boolean trackIconInactiveStartMutated = false;
   @Nullable private Drawable trackIconInactiveEnd;
+  private boolean trackIconInactiveEndMutated = false;
   @Nullable private ColorStateList trackIconInactiveColor;
   @Px private int trackIconSize;
+  @Px private int trackIconPadding;
   private int labelPadding;
-  private float touchDownX;
+  private float touchDownAxis1;
+  private float touchDownAxis2;
   private MotionEvent lastEvent;
   private LabelFormatter formatter;
   private boolean thumbIsPressed = false;
@@ -352,7 +372,7 @@ abstract class BaseSlider<
   private int focusedThumbIdx = -1;
   private float stepSize = 0.0f;
   private float[] ticksCoordinates;
-  private boolean tickVisible = true;
+  private int tickVisibilityMode;
   private int tickActiveRadius;
   private int tickInactiveRadius;
   private int trackWidth;
@@ -368,7 +388,8 @@ abstract class BaseSlider<
 
   @NonNull private final Path trackPath = new Path();
   @NonNull private final RectF activeTrackRect = new RectF();
-  @NonNull private final RectF inactiveTrackRect = new RectF();
+  @NonNull private final RectF inactiveTrackLeftRect = new RectF();
+  @NonNull private final RectF inactiveTrackRightRect = new RectF();
   @NonNull private final RectF cornerRect = new RectF();
   @NonNull private final Rect labelRect = new Rect();
   @NonNull private final RectF iconRectF = new RectF();
@@ -504,6 +525,8 @@ abstract class BaseSlider<
     minTickSpacing = resources.getDimensionPixelSize(R.dimen.mtrl_slider_tick_min_spacing);
 
     labelPadding = resources.getDimensionPixelSize(R.dimen.mtrl_slider_label_padding);
+
+    trackIconPadding = resources.getDimensionPixelOffset(R.dimen.m3_slider_track_icon_padding);
   }
 
   private void processAttributes(Context context, AttributeSet attrs, int defStyleAttr) {
@@ -566,7 +589,11 @@ abstract class BaseSlider<
             ? haloColor
             : AppCompatResources.getColorStateList(context, R.color.material_slider_halo_color));
 
-    tickVisible = a.getBoolean(R.styleable.Slider_tickVisible, true);
+    tickVisibilityMode =
+        a.hasValue(R.styleable.Slider_tickVisibilityMode)
+            ? a.getInt(R.styleable.Slider_tickVisibilityMode, -1)
+            : convertToTickVisibilityMode(a.getBoolean(R.styleable.Slider_tickVisible, true));
+
     boolean hasTickColor = a.hasValue(R.styleable.Slider_tickColor);
     int tickColorInactiveRes =
         hasTickColor ? R.styleable.Slider_tickColor : R.styleable.Slider_tickColorInactive;
@@ -653,20 +680,6 @@ abstract class BaseSlider<
     return true;
   }
 
-  private void validateValueFrom() {
-    if (valueFrom >= valueTo) {
-      throw new IllegalStateException(
-          String.format(EXCEPTION_ILLEGAL_VALUE_FROM, valueFrom, valueTo));
-    }
-  }
-
-  private void validateValueTo() {
-    if (valueTo <= valueFrom) {
-      throw new IllegalStateException(
-          String.format(EXCEPTION_ILLEGAL_VALUE_TO, valueTo, valueFrom));
-    }
-  }
-
   private boolean valueLandsOnTick(float value) {
     // Check that the value is a multiple of stepSize given the offset of valueFrom.
     double result =
@@ -695,6 +708,11 @@ abstract class BaseSlider<
   }
 
   private void validateValues() {
+    if (valueFrom >= valueTo) {
+      throw new IllegalStateException(
+          String.format(EXCEPTION_ILLEGAL_VALUE_FROM, valueFrom, valueTo));
+    }
+
     for (Float value : values) {
       if (value < valueFrom || value > valueTo) {
         throw new IllegalStateException(
@@ -748,10 +766,8 @@ abstract class BaseSlider<
 
   private void validateConfigurationIfDirty() {
     if (dirtyConfig) {
-      validateValueFrom();
-      validateValueTo();
-      validateStepSize();
       validateValues();
+      validateStepSize();
       validateMinSeparation();
       warnAboutFloatingPointError();
       dirtyConfig = false;
@@ -1768,11 +1784,19 @@ abstract class BaseSlider<
   /**
    * Returns whether the tick marks are visible. Only used when the slider is in discrete mode.
    *
-   * @see #setTickVisible(boolean)
    * @attr ref com.google.android.material.R.styleable#Slider_tickVisible
    */
   public boolean isTickVisible() {
-    return tickVisible;
+    switch (tickVisibilityMode) {
+      case TICK_VISIBILITY_AUTO_LIMIT:
+        return true;
+      case TICK_VISIBILITY_AUTO_HIDE:
+        return getDesiredTickCount() <= getMaxTickCount();
+      case TICK_VISIBILITY_HIDDEN:
+        return false;
+      default:
+        throw new IllegalStateException("Unexpected tickVisibilityMode: " + tickVisibilityMode);
+    }
   }
 
   /**
@@ -1780,10 +1804,38 @@ abstract class BaseSlider<
    *
    * @param tickVisible The visibility of tick marks.
    * @attr ref com.google.android.material.R.styleable#Slider_tickVisible
+   * @deprecated Use {@link #setTickVisibilityMode(int)} instead.
    */
+  @Deprecated
   public void setTickVisible(boolean tickVisible) {
-    if (this.tickVisible != tickVisible) {
-      this.tickVisible = tickVisible;
+    setTickVisibilityMode(convertToTickVisibilityMode(tickVisible));
+  }
+
+  @TickVisibilityMode
+  private int convertToTickVisibilityMode(boolean tickVisible) {
+    return tickVisible ? TICK_VISIBILITY_AUTO_LIMIT : TICK_VISIBILITY_HIDDEN;
+  }
+
+  /**
+   * Returns the current tick visibility mode.
+   *
+   * @see #setTickVisibilityMode(int)
+   * @attr ref com.google.android.material.R.styleable#Slider_tickVisibilityMode
+   */
+  @TickVisibilityMode
+  public int getTickVisibilityMode() {
+    return tickVisibilityMode;
+  }
+
+  /**
+   * Sets the tick visibility mode. Only used when the slider is in discrete mode.
+   *
+   * @see #getTickVisibilityMode()
+   * @attr ref com.google.android.material.R.styleable#Slider_tickVisibilityMode
+   */
+  public void setTickVisibilityMode(@TickVisibilityMode int tickVisibilityMode) {
+    if (this.tickVisibilityMode != tickVisibilityMode) {
+      this.tickVisibilityMode = tickVisibilityMode;
       postInvalidate();
     }
   }
@@ -1991,11 +2043,27 @@ abstract class BaseSlider<
    * @see #getTrackIconActiveStart()
    */
   public void setTrackIconActiveStart(@Nullable Drawable icon) {
-    if (this.trackIconActiveStart == icon) {
+    if (icon == trackIconActiveStart) {
       return;
     }
-    this.trackIconActiveStart = icon;
+
+    trackIconActiveStart = icon;
+    trackIconActiveStartMutated = false;
+    updateTrackIconActiveStart();
     invalidate();
+  }
+
+  private void updateTrackIconActiveStart() {
+    if (trackIconActiveStart != null) {
+      if (!trackIconActiveStartMutated && trackIconActiveColor != null) {
+        trackIconActiveStart = DrawableCompat.wrap(trackIconActiveStart).mutate();
+        trackIconActiveStartMutated = true;
+      }
+
+      if (trackIconActiveStartMutated) {
+        trackIconActiveStart.setTintList(trackIconActiveColor);
+      }
+    }
   }
 
   /**
@@ -2036,11 +2104,27 @@ abstract class BaseSlider<
    * @see #getTrackIconActiveEnd()
    */
   public void setTrackIconActiveEnd(@Nullable Drawable icon) {
-    if (this.trackIconActiveEnd == icon) {
+    if (icon == trackIconActiveEnd) {
       return;
     }
-    this.trackIconActiveEnd = icon;
+
+    trackIconActiveEnd = icon;
+    trackIconActiveEndMutated = false;
+    updateTrackIconActiveEnd();
     invalidate();
+  }
+
+  private void updateTrackIconActiveEnd() {
+    if (trackIconActiveEnd != null) {
+      if (!trackIconActiveEndMutated && trackIconActiveColor != null) {
+        trackIconActiveEnd = DrawableCompat.wrap(trackIconActiveEnd).mutate();
+        trackIconActiveEndMutated = true;
+      }
+
+      if (trackIconActiveEndMutated) {
+        trackIconActiveEnd.setTintList(trackIconActiveColor);
+      }
+    }
   }
 
   /**
@@ -2106,10 +2190,13 @@ abstract class BaseSlider<
    * @see #getTrackIconActiveColor()
    */
   public void setTrackIconActiveColor(@Nullable ColorStateList color) {
-    if (this.trackIconActiveColor == color) {
+    if (color == trackIconActiveColor) {
       return;
     }
-    this.trackIconActiveColor = color;
+
+    trackIconActiveColor = color;
+    updateTrackIconActiveStart();
+    updateTrackIconActiveEnd();
     invalidate();
   }
 
@@ -2134,11 +2221,27 @@ abstract class BaseSlider<
    * @see #getTrackIconInactiveStart()
    */
   public void setTrackIconInactiveStart(@Nullable Drawable icon) {
-    if (this.trackIconInactiveStart == icon) {
+    if (icon == trackIconInactiveStart) {
       return;
     }
-    this.trackIconInactiveStart = icon;
+
+    trackIconInactiveStart = icon;
+    trackIconInactiveStartMutated = false;
+    updateTrackIconInactiveStart();
     invalidate();
+  }
+
+  private void updateTrackIconInactiveStart() {
+    if (trackIconInactiveStart != null) {
+      if (!trackIconInactiveStartMutated && trackIconInactiveColor != null) {
+        trackIconInactiveStart = DrawableCompat.wrap(trackIconInactiveStart).mutate();
+        trackIconInactiveStartMutated = true;
+      }
+
+      if (trackIconInactiveStartMutated) {
+        trackIconInactiveStart.setTintList(trackIconInactiveColor);
+      }
+    }
   }
 
   /**
@@ -2179,11 +2282,27 @@ abstract class BaseSlider<
    * @see #getTrackIconInactiveEnd()
    */
   public void setTrackIconInactiveEnd(@Nullable Drawable icon) {
-    if (this.trackIconInactiveEnd == icon) {
+    if (icon == trackIconInactiveEnd) {
       return;
     }
-    this.trackIconInactiveEnd = icon;
+
+    trackIconInactiveEnd = icon;
+    trackIconInactiveEndMutated = false;
+    updateTrackIconInactiveEnd();
     invalidate();
+  }
+
+  private void updateTrackIconInactiveEnd() {
+    if (trackIconInactiveEnd != null) {
+      if (!trackIconInactiveEndMutated && trackIconInactiveColor != null) {
+        trackIconInactiveEnd = DrawableCompat.wrap(trackIconInactiveEnd).mutate();
+        trackIconInactiveEndMutated = true;
+      }
+
+      if (trackIconInactiveEndMutated) {
+        trackIconInactiveEnd.setTintList(trackIconInactiveColor);
+      }
+    }
   }
 
   /**
@@ -2223,10 +2342,13 @@ abstract class BaseSlider<
    * @see #getTrackIconInactiveColor()
    */
   public void setTrackIconInactiveColor(@Nullable ColorStateList color) {
-    if (this.trackIconInactiveColor == color) {
+    if (color == trackIconInactiveColor) {
       return;
     }
-    this.trackIconInactiveColor = color;
+
+    trackIconInactiveColor = color;
+    updateTrackIconInactiveStart();
+    updateTrackIconInactiveEnd();
     invalidate();
   }
 
@@ -2336,24 +2458,49 @@ abstract class BaseSlider<
     updateHaloHotspot();
   }
 
-  private void maybeCalculateTicksCoordinates() {
+  private void updateTicksCoordinates() {
+    validateConfigurationIfDirty();
+
     if (stepSize <= 0.0f) {
+      updateTicksCoordinates(/* tickCount= */ 0);
       return;
     }
 
-    validateConfigurationIfDirty();
+    final int tickCount;
+    switch (tickVisibilityMode) {
+      case TICK_VISIBILITY_AUTO_LIMIT:
+        tickCount = min(getDesiredTickCount(), getMaxTickCount());
+        break;
+      case TICK_VISIBILITY_AUTO_HIDE:
+        int desiredTickCount = getDesiredTickCount();
+        tickCount = desiredTickCount <= getMaxTickCount() ? desiredTickCount : 0;
+        break;
+      case TICK_VISIBILITY_HIDDEN:
+        tickCount = 0;
+        break;
+      default:
+        throw new IllegalStateException("Unexpected tickVisibilityMode: " + tickVisibilityMode);
+    }
 
-    int tickCount = (int) ((valueTo - valueFrom) / stepSize + 1);
-    // Limit the tickCount if they will be too dense.
-    tickCount = min(tickCount, trackWidth / minTickSpacing + 1);
+    updateTicksCoordinates(tickCount);
+  }
+
+  private void updateTicksCoordinates(int tickCount) {
+    if (tickCount == 0) {
+      ticksCoordinates = null;
+      return;
+    }
+
     if (ticksCoordinates == null || ticksCoordinates.length != tickCount * 2) {
       ticksCoordinates = new float[tickCount * 2];
     }
 
     float interval = trackWidth / (float) (tickCount - 1);
+    float trackCenterY = calculateTrackCenter();
+
     for (int i = 0; i < tickCount * 2; i += 2) {
       ticksCoordinates[i] = trackSidePadding + i / 2f * interval;
-      ticksCoordinates[i + 1] = calculateTrackCenter();
+      ticksCoordinates[i + 1] = trackCenterY;
     }
 
     if (isVertical()) {
@@ -2361,12 +2508,20 @@ abstract class BaseSlider<
     }
   }
 
+  private int getDesiredTickCount() {
+    return (int) ((valueTo - valueFrom) / stepSize + 1);
+  }
+
+  private int getMaxTickCount() {
+    return trackWidth / minTickSpacing + 1;
+  }
+
   private void updateTrackWidth(int width) {
     // Update the visible track width.
     trackWidth = max(width - trackSidePadding * 2, 0);
 
     // Update the visible tick coordinates.
-    maybeCalculateTicksCoordinates();
+    updateTicksCoordinates();
   }
 
   private void updateHaloHotspot() {
@@ -2380,12 +2535,8 @@ abstract class BaseSlider<
         if (isVertical()) {
           rotationMatrix.mapPoints(haloBounds);
         }
-        DrawableCompat.setHotspotBounds(
-            background,
-            (int) haloBounds[0],
-            (int) haloBounds[1],
-            (int) haloBounds[2],
-            (int) haloBounds[3]);
+        background.setHotspotBounds(
+            (int) haloBounds[0], (int) haloBounds[1], (int) haloBounds[2], (int) haloBounds[3]);
       }
     }
   }
@@ -2403,22 +2554,21 @@ abstract class BaseSlider<
       validateConfigurationIfDirty();
 
       // Update the visible tick coordinates.
-      maybeCalculateTicksCoordinates();
+      updateTicksCoordinates();
     }
 
     super.onDraw(canvas);
 
     int yCenter = calculateTrackCenter();
 
-    float first = values.get(0);
-    float last = values.get(values.size() - 1);
-    if (last < valueTo || (values.size() > 1 && first > valueFrom)) {
-      drawInactiveTrack(canvas, trackWidth, yCenter);
+    drawInactiveTracks(canvas, trackWidth, yCenter);
+    drawActiveTracks(canvas, trackWidth, yCenter);
+
+    if (isRtl() || isVertical()) {
+      drawTrackIcons(canvas, activeTrackRect, inactiveTrackLeftRect);
+    } else {
+      drawTrackIcons(canvas, activeTrackRect, inactiveTrackRightRect);
     }
-    if (last > valueFrom) {
-      drawActiveTrack(canvas, trackWidth, yCenter);
-    }
-    drawTrackIcons(canvas, activeTrackRect, inactiveTrackRect);
 
     maybeDrawTicks(canvas);
     maybeDrawStopIndicator(canvas, yCenter);
@@ -2446,34 +2596,50 @@ abstract class BaseSlider<
     return isRtl() || isVertical() ? new float[] {right, left} : new float[] {left, right};
   }
 
-  private void drawInactiveTrack(@NonNull Canvas canvas, int width, int yCenter) {
-    int trackCornerSize = getTrackCornerSize();
+  private void drawInactiveTracks(@NonNull Canvas canvas, int width, int yCenter) {
+    populateInactiveTrackRightRect(width, yCenter);
+    updateTrack(
+        canvas,
+        inactiveTrackPaint,
+        inactiveTrackRightRect,
+        getTrackCornerSize(),
+        FullCornerDirection.RIGHT);
+
+    // Also draw inactive track to the left if there is any
+    populateInactiveTrackLeftRect(width, yCenter);
+    updateTrack(
+        canvas,
+        inactiveTrackPaint,
+        inactiveTrackLeftRect,
+        getTrackCornerSize(),
+        FullCornerDirection.LEFT);
+  }
+
+  private void populateInactiveTrackRightRect(int width, int yCenter) {
     float[] activeRange = getActiveRange();
     float right = trackSidePadding + activeRange[1] * width;
     if (right < trackSidePadding + width) {
-      inactiveTrackRect.set(
+      inactiveTrackRightRect.set(
           right + thumbTrackGapSize,
           yCenter - trackThickness / 2f,
-          trackSidePadding + width + trackCornerSize,
+          trackSidePadding + width + getTrackCornerSize(),
           yCenter + trackThickness / 2f);
-      updateTrack(
-          canvas,
-          inactiveTrackPaint,
-          inactiveTrackRect,
-          trackCornerSize,
-          FullCornerDirection.RIGHT);
+    } else {
+      inactiveTrackRightRect.setEmpty();
     }
+  }
 
-    // Also draw inactive track to the left if there is any
+  private void populateInactiveTrackLeftRect(int width, int yCenter) {
+    float[] activeRange = getActiveRange();
     float left = trackSidePadding + activeRange[0] * width;
     if (left > trackSidePadding) {
-      inactiveTrackRect.set(
-          trackSidePadding - trackCornerSize,
+      inactiveTrackLeftRect.set(
+          trackSidePadding - getTrackCornerSize(),
           yCenter - trackThickness / 2f,
           left - thumbTrackGapSize,
           yCenter + trackThickness / 2f);
-      updateTrack(
-          canvas, inactiveTrackPaint, inactiveTrackRect, trackCornerSize, FullCornerDirection.LEFT);
+    } else {
+      inactiveTrackLeftRect.setEmpty();
     }
   }
 
@@ -2489,10 +2655,14 @@ abstract class BaseSlider<
     return normalized;
   }
 
-  private void drawActiveTrack(@NonNull Canvas canvas, int width, int yCenter) {
+  private void drawActiveTracks(@NonNull Canvas canvas, int width, int yCenter) {
     float[] activeRange = getActiveRange();
     float right = trackSidePadding + activeRange[1] * width;
     float left = trackSidePadding + activeRange[0] * width;
+    if (left >= right) {
+      activeTrackRect.setEmpty();
+      return;
+    }
 
     FullCornerDirection direction = FullCornerDirection.NONE;
     if (values.size() == 1) { // Only 1 thumb
@@ -2532,6 +2702,7 @@ abstract class BaseSlider<
 
       // Nothing to draw if left is bigger than right.
       if (left >= right) {
+        activeTrackRect.setEmpty();
         continue;
       }
 
@@ -2569,42 +2740,44 @@ abstract class BaseSlider<
       @NonNull Canvas canvas,
       @NonNull RectF activeTrackBounds,
       @NonNull RectF inactiveTrackBounds) {
+    if (!hasTrackIcons()) {
+      return;
+    }
+
     if (values.size() > 1) {
       Log.w(TAG, "Track icons can only be used when only 1 thumb is present.");
     }
 
     // draw track start icons
-    calculateBoundsAndDrawTrackIcon(
-        canvas, activeTrackBounds, trackIconActiveStart, trackIconActiveColor, true);
-    calculateBoundsAndDrawTrackIcon(
-        canvas, inactiveTrackBounds, trackIconInactiveStart, trackIconInactiveColor, true);
+    calculateBoundsAndDrawTrackIcon(canvas, activeTrackBounds, trackIconActiveStart, true);
+    calculateBoundsAndDrawTrackIcon(canvas, inactiveTrackBounds, trackIconInactiveStart, true);
     // draw track end icons
-    calculateBoundsAndDrawTrackIcon(
-        canvas, activeTrackBounds, trackIconActiveEnd, trackIconActiveColor, false);
-    calculateBoundsAndDrawTrackIcon(
-        canvas, inactiveTrackBounds, trackIconInactiveEnd, trackIconInactiveColor, false);
+    calculateBoundsAndDrawTrackIcon(canvas, activeTrackBounds, trackIconActiveEnd, false);
+    calculateBoundsAndDrawTrackIcon(canvas, inactiveTrackBounds, trackIconInactiveEnd, false);
+  }
+
+  private boolean hasTrackIcons() {
+    return trackIconActiveStart != null
+        || trackIconActiveEnd != null
+        || trackIconInactiveStart != null
+        || trackIconInactiveEnd != null;
   }
 
   private void calculateBoundsAndDrawTrackIcon(
       @NonNull Canvas canvas,
       @NonNull RectF trackBounds,
       @Nullable Drawable icon,
-      @Nullable ColorStateList iconColor,
       boolean isStart) {
     if (icon != null) {
-      calculateTrackIconBounds(trackBounds, iconRectF, trackIconSize, isStart);
+      calculateTrackIconBounds(trackBounds, iconRectF, trackIconSize, trackIconPadding, isStart);
       if (!iconRectF.isEmpty()) {
-        drawTrackIcon(canvas, iconRectF, icon, iconColor);
+        drawTrackIcon(canvas, iconRectF, icon);
       }
     }
   }
 
   private void drawTrackIcon(
-      @NonNull Canvas canvas,
-      @NonNull RectF iconBounds,
-      @NonNull Drawable icon,
-      @Nullable ColorStateList color) {
-    DrawableCompat.setTintList(icon, color);
+      @NonNull Canvas canvas, @NonNull RectF iconBounds, @NonNull Drawable icon) {
     if (isVertical()) {
       rotationMatrix.mapRect(iconBounds);
     }
@@ -2614,28 +2787,24 @@ abstract class BaseSlider<
   }
 
   private void calculateTrackIconBounds(
-      @NonNull RectF trackBounds, @NonNull RectF iconBounds, @Px int iconSize, boolean isStart) {
-    float iconPadding = getResources().getDimension(R.dimen.m3_slider_track_icon_padding);
-    float iconLeft;
-    if (isStart) {
-      iconLeft =
-          isRtl() || isVertical()
-              ? trackBounds.right - iconSize - iconPadding
-              : trackBounds.left + iconPadding;
-    } else {
-      iconLeft =
-          isRtl() || isVertical()
+      @NonNull RectF trackBounds,
+      @NonNull RectF iconBounds,
+      @Px int iconSize,
+      @Px int iconPadding,
+      boolean isStart) {
+    if (trackBounds.right - trackBounds.left >= iconSize + 2 * iconPadding) {
+      float iconLeft =
+          (isStart ^ (isRtl() || isVertical()))
               ? trackBounds.left + iconPadding
-              : trackBounds.right - iconSize - iconPadding;
-    }
-    float iconRight = iconLeft + iconSize;
-    int iconTop = calculateTrackCenter() - iconSize / 2;
-    if (trackBounds.left > iconLeft - iconPadding || trackBounds.right < iconRight + iconPadding) {
+              : trackBounds.right - iconPadding - iconSize;
+      float iconTop = calculateTrackCenter() - iconSize / 2f;
+      float iconRight = iconLeft + iconSize;
+      float iconBottom = iconTop + iconSize;
+      iconBounds.set(iconLeft, iconTop, iconRight, iconBottom);
+    } else {
       // not enough space to draw icon
       iconBounds.setEmpty();
-      return;
     }
-    iconBounds.set(iconLeft, iconTop, iconRight, iconTop + iconSize);
   }
 
   private boolean hasGapBetweenThumbAndTrack() {
@@ -2652,6 +2821,10 @@ abstract class BaseSlider<
 
   private void updateTrack(
       Canvas canvas, Paint paint, RectF bounds, float cornerSize, FullCornerDirection direction) {
+    if (bounds.isEmpty()) {
+      return;
+    }
+
     float leftCornerSize = calculateStartTrackCornerSize(cornerSize);
     float rightCornerSize = calculateEndTrackCornerSize(cornerSize);
     switch (direction) {
@@ -2734,7 +2907,7 @@ abstract class BaseSlider<
   }
 
   private void maybeDrawTicks(@NonNull Canvas canvas) {
-    if (!tickVisible || stepSize <= 0.0f) {
+    if (ticksCoordinates == null || ticksCoordinates.length == 0) {
       return;
     }
 
@@ -2821,7 +2994,7 @@ abstract class BaseSlider<
       @NonNull Canvas canvas, int width, int top, float value, @NonNull Drawable thumbDrawable) {
     canvas.save();
     if (isVertical()) {
-      canvas.setMatrix(rotationMatrix);
+      canvas.concat(rotationMatrix);
     }
     canvas.translate(
         trackSidePadding
@@ -2863,18 +3036,25 @@ abstract class BaseSlider<
       return false;
     }
 
-    float eventCoordinate = isVertical() ? event.getY() : event.getX();
-    touchPosition = (eventCoordinate - trackSidePadding) / trackWidth;
+    float eventCoordinateAxis1 = isVertical() ? event.getY() : event.getX();
+    float eventCoordinateAxis2 = isVertical() ? event.getX() : event.getY();
+    touchPosition = (eventCoordinateAxis1 - trackSidePadding) / trackWidth;
     touchPosition = max(0, touchPosition);
     touchPosition = min(1, touchPosition);
 
     switch (event.getActionMasked()) {
       case MotionEvent.ACTION_DOWN:
-        touchDownX = eventCoordinate;
+        touchDownAxis1 = eventCoordinateAxis1;
+        touchDownAxis2 = eventCoordinateAxis2;
 
         // If we're inside a vertical scrolling container,
         // we should start dragging in ACTION_MOVE
-        if (isPotentialVerticalScroll(event)) {
+        if (!isVertical() && isPotentialVerticalScroll(event)) {
+          break;
+        }
+        // If we're inside a horizontal scrolling container,
+        // we should start dragging in ACTION_MOVE
+        if (isVertical() && isPotentialHorizontalScroll(event)) {
           break;
         }
 
@@ -2897,8 +3077,15 @@ abstract class BaseSlider<
       case MotionEvent.ACTION_MOVE:
         if (!thumbIsPressed) {
           // Check if we're trying to scroll vertically instead of dragging this Slider
-          if (isPotentialVerticalScroll(event)
-              && abs(eventCoordinate - touchDownX) < scaledTouchSlop) {
+          if (!isVertical()
+              && isPotentialVerticalScroll(event)
+              && abs(eventCoordinateAxis1 - touchDownAxis1) < scaledTouchSlop) {
+            return false;
+          }
+          // Check if we're trying to scroll horizontally instead of dragging this Slider
+          if (isVertical()
+              && isPotentialHorizontalScroll(event)
+              && abs(eventCoordinateAxis2 - touchDownAxis2) < scaledTouchSlop * TOUCH_SLOP_RATIO) {
             return false;
           }
           getParent().requestDisallowInterceptTouchEvent(true);
@@ -3180,6 +3367,8 @@ abstract class BaseSlider<
   }
 
   private void updateLabels() {
+    updateLabelPivots();
+
     switch (labelBehavior) {
       case LABEL_GONE:
         ensureLabelsRemoved();
@@ -3201,6 +3390,29 @@ abstract class BaseSlider<
         break;
       default:
         throw new IllegalArgumentException("Unexpected labelBehavior: " + labelBehavior);
+    }
+  }
+
+  private void updateLabelPivots() {
+    // Set the pivot point so that the label pops up in the direction from the thumb.
+    final float labelPivotX;
+    final float labelPivotY;
+
+    final boolean isVertical = isVertical();
+    final boolean isRtl = isRtl();
+    if (isVertical && isRtl) {
+      labelPivotX = RIGHT_LABEL_PIVOT_X;
+      labelPivotY = RIGHT_LABEL_PIVOT_Y;
+    } else if (isVertical) {
+      labelPivotX = LEFT_LABEL_PIVOT_X;
+      labelPivotY = LEFT_LABEL_PIVOT_Y;
+    } else {
+      labelPivotX = TOP_LABEL_PIVOT_X;
+      labelPivotY = TOP_LABEL_PIVOT_Y;
+    }
+
+    for (TooltipDrawable label : labels) {
+      label.setPivots(labelPivotX, labelPivotY);
     }
   }
 
@@ -3353,12 +3565,30 @@ abstract class BaseSlider<
     return false;
   }
 
+  private boolean isInHorizontalScrollingContainer() {
+    ViewParent p = getParent();
+    while (p instanceof ViewGroup) {
+      ViewGroup parent = (ViewGroup) p;
+      boolean canScrollHorizontally =
+          parent.canScrollHorizontally(1) || parent.canScrollHorizontally(-1);
+      if (canScrollHorizontally && parent.shouldDelayChildPressedState()) {
+        return true;
+      }
+      p = p.getParent();
+    }
+    return false;
+  }
+
   private static boolean isMouseEvent(MotionEvent event) {
     return event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE;
   }
 
   private boolean isPotentialVerticalScroll(MotionEvent event) {
     return !isMouseEvent(event) && isInVerticalScrollingContainer();
+  }
+
+  private boolean isPotentialHorizontalScroll(MotionEvent event) {
+    return !isMouseEvent(event) && isInHorizontalScrollingContainer();
   }
 
   @SuppressWarnings("unchecked")
