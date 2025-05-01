@@ -47,6 +47,7 @@ import android.view.accessibility.AccessibilityEvent;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.activity.BackEventCompat;
 import androidx.annotation.ColorInt;
@@ -60,6 +61,7 @@ import androidx.annotation.StringRes;
 import androidx.annotation.StyleRes;
 import androidx.annotation.VisibleForTesting;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
+import androidx.core.graphics.Insets;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -143,6 +145,7 @@ public class SearchView extends FrameLayout
   final MaterialToolbar toolbar;
   final Toolbar dummyToolbar;
   final TextView searchPrefix;
+  final LinearLayout textContainer;
   final EditText editText;
   final ImageButton clearButton;
   final View divider;
@@ -214,6 +217,7 @@ public class SearchView extends FrameLayout
     toolbar = findViewById(R.id.open_search_view_toolbar);
     dummyToolbar = findViewById(R.id.open_search_view_dummy_toolbar);
     searchPrefix = findViewById(R.id.open_search_view_search_prefix);
+    textContainer = findViewById(R.id.open_search_view_text_container);
     editText = findViewById(R.id.open_search_view_edit_text);
     clearButton = findViewById(R.id.open_search_view_clear_button);
     divider = findViewById(R.id.open_search_view_divider);
@@ -283,6 +287,9 @@ public class SearchView extends FrameLayout
   public void startBackProgress(@NonNull BackEventCompat backEvent) {
     if (isHiddenOrHiding() || searchBar == null) {
       return;
+    }
+    if (searchBar != null) {
+      searchBar.setPlaceholderText(editText.getText().toString());
     }
     searchViewAnimationHelper.startBackProgress(backEvent);
   }
@@ -508,9 +515,13 @@ public class SearchView extends FrameLayout
           boolean isRtl = ViewUtils.isLayoutRtl(toolbar);
           int paddingLeft = isRtl ? initialPadding.end : initialPadding.start;
           int paddingRight = isRtl ? initialPadding.start : initialPadding.end;
-          toolbar.setPadding(
-              paddingLeft + insets.getSystemWindowInsetLeft(), initialPadding.top,
-              paddingRight + insets.getSystemWindowInsetRight(), initialPadding.bottom);
+          Insets systemBarCutoutInsets =
+              insets.getInsets(
+                  WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+          paddingLeft += systemBarCutoutInsets.left;
+          paddingRight += systemBarCutoutInsets.right;
+
+          toolbar.setPadding(paddingLeft, initialPadding.top, paddingRight, initialPadding.bottom);
           return insets;
         });
   }
@@ -523,7 +534,11 @@ public class SearchView extends FrameLayout
     ViewCompat.setOnApplyWindowInsetsListener(
         statusBarSpacer,
         (v, insets) -> {
-          int systemWindowInsetTop = insets.getSystemWindowInsetTop();
+          int systemWindowInsetTop =
+              insets.getInsets(
+                      WindowInsetsCompat.Type.systemBars()
+                          | WindowInsetsCompat.Type.displayCutout())
+                  .top;
           setUpStatusBarSpacer(systemWindowInsetTop);
           if (!statusBarSpacerEnabledOverride) {
             setStatusBarSpacerEnabledInternal(systemWindowInsetTop > 0);
@@ -539,8 +554,11 @@ public class SearchView extends FrameLayout
     ViewCompat.setOnApplyWindowInsetsListener(
         divider,
         (v, insets) -> {
-          layoutParams.leftMargin = leftMargin + insets.getSystemWindowInsetLeft();
-          layoutParams.rightMargin = rightMargin + insets.getSystemWindowInsetRight();
+          Insets systemBarCutoutInsets =
+              insets.getInsets(
+                  WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+          layoutParams.leftMargin = leftMargin + systemBarCutoutInsets.left;
+          layoutParams.rightMargin = rightMargin + systemBarCutoutInsets.right;
           return insets;
         });
   }
@@ -878,7 +896,12 @@ public class SearchView extends FrameLayout
         || currentTransitionState.equals(TransitionState.HIDING)) {
       return;
     }
-    searchViewAnimationHelper.hide();
+    if (searchBar != null && searchBar.isAttachedToWindow()) {
+      searchBar.setPlaceholderText(editText.getText().toString());
+      searchBar.post(searchViewAnimationHelper::hide);
+    } else {
+      searchViewAnimationHelper.hide();
+    }
   }
 
   /** Updates the visibility of the {@link SearchView} without an animation. */

@@ -131,6 +131,8 @@ public class MaterialButtonGroup extends LinearLayout {
   @Px private int spacing;
   @Nullable private StateListSizeChange buttonSizeChange;
 
+  private boolean isChildrenShapeInvalidated = true;
+
   public MaterialButtonGroup(@NonNull Context context) {
     this(context, null);
   }
@@ -204,6 +206,10 @@ public class MaterialButtonGroup extends LinearLayout {
       return;
     }
 
+    // Recover the original layout params of all children before adding the new child.
+    recoverAllChildrenLayoutParams();
+
+    isChildrenShapeInvalidated = true;
     super.addView(child, index, params);
     MaterialButton buttonChild = (MaterialButton) child;
     setGeneratedIdIfNeeded(buttonChild);
@@ -231,8 +237,19 @@ public class MaterialButtonGroup extends LinearLayout {
       originalChildStateListShapeAppearanceModels.remove(indexOfChild);
     }
 
+    isChildrenShapeInvalidated = true;
     updateChildShapes();
+
+    // Recover the original layout params of all children before updating the child layout.
+    recoverAllChildrenLayoutParams();
     adjustChildMarginsAndUpdateLayout();
+  }
+
+  private void recoverAllChildrenLayoutParams(){
+    for (int i = 0; i < getChildCount(); i++) {
+      MaterialButton child = getChildButton(i);
+      child.recoverOriginalLayoutParams();
+    }
   }
 
   @Override
@@ -246,6 +263,7 @@ public class MaterialButtonGroup extends LinearLayout {
   protected void onLayout(boolean changed, int l, int t, int r, int b) {
     super.onLayout(changed, l, t, r, b);
     if (changed) {
+      recoverAllChildrenLayoutParams();
       adjustChildSizeChange();
     }
   }
@@ -256,9 +274,11 @@ public class MaterialButtonGroup extends LinearLayout {
   @VisibleForTesting
   void updateChildShapes() {
     // No need to update shape if no inside corners or outer corners are specified.
-    if (innerCornerSize == null && groupStateListShapeAppearance == null) {
+    if ((innerCornerSize == null && groupStateListShapeAppearance == null)
+        || !isChildrenShapeInvalidated) {
       return;
     }
+    isChildrenShapeInvalidated = false;
     int childCount = getChildCount();
     int firstVisibleChildIndex = getFirstVisibleChildIndex();
     int lastVisibleChildIndex = getLastVisibleChildIndex();
@@ -456,7 +476,7 @@ public class MaterialButtonGroup extends LinearLayout {
    * buttons,
    */
   private void adjustChildSizeChange() {
-    if (buttonSizeChange == null) {
+    if (buttonSizeChange == null || getChildCount() == 0) {
       return;
     }
     int firstVisibleChildIndex = getFirstVisibleChildIndex();
@@ -580,6 +600,7 @@ public class MaterialButtonGroup extends LinearLayout {
    */
   public void setInnerCornerSize(@NonNull CornerSize cornerSize) {
     innerCornerSize = StateListCornerSize.create(cornerSize);
+    isChildrenShapeInvalidated = true;
     updateChildShapes();
     invalidate();
   }
@@ -608,6 +629,7 @@ public class MaterialButtonGroup extends LinearLayout {
   @RestrictTo(Scope.LIBRARY_GROUP)
   public void setInnerCornerSizeStateList(@NonNull StateListCornerSize cornerSizeStateList) {
     innerCornerSize = cornerSizeStateList;
+    isChildrenShapeInvalidated = true;
     updateChildShapes();
     invalidate();
   }
@@ -628,6 +650,7 @@ public class MaterialButtonGroup extends LinearLayout {
   public void setShapeAppearance(@Nullable ShapeAppearanceModel shapeAppearance) {
     groupStateListShapeAppearance =
         new StateListShapeAppearanceModel.Builder(shapeAppearance).build();
+    isChildrenShapeInvalidated = true;
     updateChildShapes();
     invalidate();
   }
@@ -653,6 +676,7 @@ public class MaterialButtonGroup extends LinearLayout {
   public void setStateListShapeAppearance(
       @Nullable StateListShapeAppearanceModel stateListShapeAppearance) {
     groupStateListShapeAppearance = stateListShapeAppearance;
+    isChildrenShapeInvalidated = true;
     updateChildShapes();
     invalidate();
   }
