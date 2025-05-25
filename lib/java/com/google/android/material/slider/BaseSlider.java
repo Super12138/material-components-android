@@ -75,15 +75,16 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewOverlay;
 import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.SeekBar;
 import androidx.annotation.ColorInt;
 import androidx.annotation.ColorRes;
 import androidx.annotation.DimenRes;
-import androidx.annotation.Dimension;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.IntDef;
 import androidx.annotation.IntRange;
@@ -100,9 +101,9 @@ import com.google.android.material.animation.AnimationUtils;
 import com.google.android.material.drawable.DrawableUtils;
 import com.google.android.material.internal.DescendantOffsetUtils;
 import com.google.android.material.internal.ThemeEnforcement;
-import com.google.android.material.internal.ViewOverlayImpl;
 import com.google.android.material.internal.ViewUtils;
 import com.google.android.material.motion.MotionUtils;
+import com.google.android.material.resources.MaterialAttributes;
 import com.google.android.material.resources.MaterialResources;
 import com.google.android.material.shape.MaterialShapeDrawable;
 import com.google.android.material.shape.ShapeAppearanceModel;
@@ -293,9 +294,6 @@ abstract class BaseSlider<
 
   private static final float RIGHT_LABEL_PIVOT_X = -0.2f;
   private static final float RIGHT_LABEL_PIVOT_Y = 0.5f;
-
-  @Dimension(unit = Dimension.DP)
-  private static final int MIN_TOUCH_TARGET_DP = 48;
 
   @NonNull private final Paint inactiveTrackPaint;
   @NonNull private final Paint activeTrackPaint;
@@ -547,8 +545,7 @@ abstract class BaseSlider<
     setCentered(a.getBoolean(R.styleable.Slider_centered, false));
     stepSize = a.getFloat(R.styleable.Slider_android_stepSize, 0.0f);
 
-    float defaultMinTouchTargetSize =
-        (float) Math.ceil(ViewUtils.dpToPx(getContext(), MIN_TOUCH_TARGET_DP));
+    float defaultMinTouchTargetSize = MaterialAttributes.resolveMinimumAccessibleTouchTarget(context);
     minTouchTargetSize =
         (int)
             Math.ceil(
@@ -2373,7 +2370,7 @@ abstract class BaseSlider<
     // When the visibility is set to VISIBLE, onDraw() is called again which adds or removes labels
     // according to the setting.
     if (visibility != VISIBLE) {
-      ViewOverlayImpl contentViewOverlay = ViewUtils.getContentViewOverlay(this);
+      ViewOverlay contentViewOverlay = ViewUtils.getContentViewOverlay(this);
       if (contentViewOverlay == null) {
         return;
       }
@@ -2458,7 +2455,7 @@ abstract class BaseSlider<
   }
 
   private void detachLabelFromContentView(TooltipDrawable label) {
-    ViewOverlayImpl contentViewOverlay = ViewUtils.getContentViewOverlay(this);
+    ViewOverlay contentViewOverlay = ViewUtils.getContentViewOverlay(this);
     if (contentViewOverlay != null) {
       contentViewOverlay.remove(label);
       label.detachView(ViewUtils.getContentView(this));
@@ -3489,6 +3486,14 @@ abstract class BaseSlider<
   }
 
   @Override
+  public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+    super.onInitializeAccessibilityNodeInfo(info);
+    // Setting content description to null prevents duplicate announcements by making only our
+    // virtual view accessible, not the parent container.
+    info.setContentDescription(null);
+  }
+
+  @Override
   public void onVisibilityAggregated(boolean isVisible) {
     super.onVisibilityAggregated(isVisible);
     this.thisAndAncestorsVisible = isVisible;
@@ -3506,7 +3511,7 @@ abstract class BaseSlider<
             @Override
             public void onAnimationEnd(Animator animation) {
               super.onAnimationEnd(animation);
-              ViewOverlayImpl contentViewOverlay = ViewUtils.getContentViewOverlay(BaseSlider.this);
+              ViewOverlay contentViewOverlay = ViewUtils.getContentViewOverlay(BaseSlider.this);
               for (TooltipDrawable label : labels) {
                 contentViewOverlay.remove(label);
               }
@@ -3580,14 +3585,20 @@ abstract class BaseSlider<
     int right;
     int bottom;
     int top;
-    if (isVertical() && !isRtl()) {
+
+    if (isVertical()) {
       left =
           trackSidePadding
               + (int) (normalizeValue(value) * trackWidth)
               - label.getIntrinsicHeight() / 2;
       right = left + label.getIntrinsicHeight();
-      top = calculateTrackCenter() + (labelPadding + thumbHeight / 2);
-      bottom = top + label.getIntrinsicWidth();
+      if (isRtl()) {
+        bottom = calculateTrackCenter() - (labelPadding + thumbHeight / 2);
+        top = bottom - label.getIntrinsicWidth();
+      } else {
+        top = calculateTrackCenter() + (labelPadding + thumbHeight / 2);
+        bottom = top + label.getIntrinsicWidth();
+      }
     } else {
       left =
           trackSidePadding

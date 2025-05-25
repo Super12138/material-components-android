@@ -71,12 +71,12 @@ Here's what a typical layout would look like:
     android:layout_margin="16dp">
 
     <!-- floating toolbar sample content -->
-    <LinearLayout
+    <com.google.android.material.overflow.OverflowLinearLayout
       android:id="@+id/floating_toolbar_child"
       android:layout_width="wrap_content"
       android:layout_height="wrap_content"
       android:layout_gravity="center"
-      android:orientation="vertical">
+      android:orientation="horizontal">
 
       <Button
         android:id="@+id/floating_toolbar_button_bold"
@@ -85,7 +85,9 @@ Here's what a typical layout would look like:
         android:layout_height="wrap_content"
         android:checkable="true"
         android:contentDescription="@string/bold_button_content_description"
-        app:icon="@drawable/ic_format_bold_24px" />
+        app:icon="@drawable/ic_format_bold_24px"
+        app:layout_overflowText="@string/bold_button"
+        app:layout_overflowIcon="@drawable/ic_format_bold_24px" />
 
       <Button
         android:id="@+id/floating_toolbar_button_italic"
@@ -94,7 +96,9 @@ Here's what a typical layout would look like:
         android:layout_height="wrap_content"
         android:checkable="true"
         android:contentDescription="@string/italic_button_content_description"
-        app:icon="@drawable/ic_format_italic_24px" />
+        app:icon="@drawable/ic_format_italic_24px"
+        app:layout_overflowText="@string/italic_button"
+        app:layout_overflowIcon="@drawable/ic_format_italic_24px" />
 
       <Button
         android:id="@+id/floating_toolbar_button_underlined"
@@ -103,14 +107,33 @@ Here's what a typical layout would look like:
         android:layout_height="wrap_content"
         android:checkable="true"
         android:contentDescription="@string/underlined_button_content_description"
-        app:icon="@drawable/ic_format_underlined_24px" />
-    </LinearLayout>
+        app:icon="@drawable/ic_format_underlined_24px"
+        app:layout_overflowText="@string/underlined_button"
+        app:layout_overflowIcon="@drawable/ic_format_underlined_24px" />
+    </com.google.android.material.overflow.OverflowLinearLayout>
 
   </com.google.android.material.floatingtoolbar.FloatingToolbarLayout>
 ```
 
-A Floating Toolbar is a `FrameLayout` that provides additional styling and functionality.
-You may add children to it as you would to a `FrameLayout`.
+A Floating Toolbar is a `FrameLayout` that provides additional styling and
+functionality.
+You may add children to it as you would to a `FrameLayout`. It's recommended to
+have its children wrapped by an `OverflowLinearLayout` that will handle
+automatically adding items to an overflow button when there's not enough screen
+space to show all the items.
+
+When using `OverflowLinearLayout`, you should also set `app:layout_overflowText`
+as that will be the text of the menu item that corresponds to the hidden child.
+Optionally, you can also set `app:layout_overflowIcon`. See
+[OverflowLinearLayout](https://github.com/material-components/material-components-android/tree/master//docs/components/Overflow.md)
+for more info.
+
+Note: if the child view that is clickable is not a direct child of
+`OverflowLinearLayout`, such as the case of the example above, make sure to
+propagate the parent's click to the child. That is so overflowed items in the
+overflowed menu respond properly to being clicked. Alternatively, you can also
+set `onClickListener`s on the overflowed items directly by accessing them via
+`OverflowLinearLayout.getOverflowedViews()`.
 
 Floating toolbars can hide on scroll if inside a `CoordinatorLayout` by setting
 the following `CoordinatorLayout.Behavior` through the `app:layout_behavior`
@@ -135,7 +158,6 @@ API and source code:
 
 *   `FloatingToolBar`
     *   [Class source](https://github.com/material-components/material-components-android/tree/master/lib/java/com/google/android/material/floatingtoolbar/FloatingToolbarLayout.java)
-
 
 ### Making Floating Toolbar accessible
 
