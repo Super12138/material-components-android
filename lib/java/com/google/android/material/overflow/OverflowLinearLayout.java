@@ -39,6 +39,7 @@ import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonGroup.OverflowUtils;
 import com.google.android.material.internal.ThemeEnforcement;
 import com.google.android.material.resources.MaterialAttributes;
 import java.util.LinkedHashSet;
@@ -95,7 +96,8 @@ public class OverflowLinearLayout extends LinearLayout {
     // Configurations of the overflow button.
     overflowButton =
         (MaterialButton)
-            LayoutInflater.from(context).inflate(R.layout.m3_overflow_button, this, false);
+            LayoutInflater.from(context)
+                .inflate(R.layout.m3_overflow_linear_layout_overflow_button, this, false);
     setOverflowButtonIcon(overflowButtonDrawable);
     if (overflowButton.getContentDescription() == null) {
       overflowButton.setContentDescription(
@@ -261,7 +263,9 @@ public class OverflowLinearLayout extends LinearLayout {
     for (View view : overflowViews) {
       OverflowLinearLayout.LayoutParams lp =
           (OverflowLinearLayout.LayoutParams) view.getLayoutParams();
-      MenuItem item = popupMenu.getMenu().add(lp.overflowText);
+
+      CharSequence text = OverflowUtils.getMenuItemText(view, lp.overflowText);
+      MenuItem item = popupMenu.getMenu().add(text);
       Drawable icon = lp.overflowIcon;
       if (icon != null) {
         item.setIcon(
@@ -271,8 +275,8 @@ public class OverflowLinearLayout extends LinearLayout {
         MaterialButton button = (MaterialButton) view;
         item.setCheckable(button.isCheckable());
         item.setChecked(button.isChecked());
-        item.setEnabled(button.isEnabled());
       }
+      item.setEnabled(view.isEnabled());
       item.setOnMenuItemClickListener(
           menuItem -> {
             view.performClick();
@@ -326,7 +330,7 @@ public class OverflowLinearLayout extends LinearLayout {
   /** A {@link LinearLayout.LayoutParams} implementation for {@link OverflowLinearLayout}. */
   public static class LayoutParams extends LinearLayout.LayoutParams {
     @Nullable public Drawable overflowIcon = null;
-    @Nullable public String overflowText = null;
+    @Nullable public CharSequence overflowText = null;
 
     /**
      * Creates a new set of layout parameters. The values are extracted from the supplied attributes
@@ -343,7 +347,7 @@ public class OverflowLinearLayout extends LinearLayout {
       overflowIcon =
           attributes.getDrawable(R.styleable.OverflowLinearLayout_Layout_layout_overflowIcon);
       overflowText =
-          attributes.getString(R.styleable.OverflowLinearLayout_Layout_layout_overflowText);
+          attributes.getText(R.styleable.OverflowLinearLayout_Layout_layout_overflowText);
 
       attributes.recycle();
     }
@@ -366,14 +370,14 @@ public class OverflowLinearLayout extends LinearLayout {
      *     in pixels
      * @param weight the weight
      * @param overflowIcon the overflow icon drawable
-     * @param overflowText the overflow text string
+     * @param overflowText the overflow text char sequence
      */
     public LayoutParams(
         int width,
         int height,
         float weight,
         @Nullable Drawable overflowIcon,
-        @Nullable String overflowText) {
+        @Nullable CharSequence overflowText) {
       super(width, height, weight);
       this.overflowIcon = overflowIcon;
       this.overflowText = overflowText;
